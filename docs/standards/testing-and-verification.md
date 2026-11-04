@@ -2,7 +2,7 @@
 status: active
 doc_type: standard
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - docs/ai/repo-rules.md
   - docs/guides/testing-guide.md
@@ -22,6 +22,7 @@ source_of_truth:
 | Tool | Version | Notes |
 | --- | --- | --- |
 | Go | 1.27.3 | 见 `backend/go.mod`；后端构建与测试用 |
+| C compiler | GCC-compatible | GORM SQLite 驱动通过 CGO 构建 |
 | Node.js | 24.x | `.nvmrc` 维护大版本；前端镜像锁定 `node:24.12.0-alpine3.23` |
 | pnpm | 12.17.0 | 见 `frontend/package.json` 的 `packageManager` |
 | golangci-lint | 当前稳定版 | 后端 lint；本地缺失时 `make backend-lint` 会失败 |
@@ -29,7 +30,7 @@ source_of_truth:
 | Vitest | 4.x | 前端测试运行器，由 `pnpm --dir frontend test` 触发 |
 | Redocly CLI | 2.x | OpenAPI 校验，由 `make openapi-lint` 触发 |
 | Air | v1.65.1 | 后端热重载，仅本地开发用；由 `make backend-dev` 经 `go run` 自动拉取，无需安装 |
-| Docker | 任意稳定版 | 仅在运行 `make backend-integration` 或 Compose 烟测时需要 |
+| Docker | 任意稳定版 | 仅在运行 Compose 烟测时需要 |
 
 ## Default Commands
 
@@ -38,9 +39,9 @@ source_of_truth:
 ### Backend / Core
 
 - `make backend-build`：编译 `backend/cmd/api`
-- `make backend-test`：运行 `go test ./...`（不含集成测试）
+- `make backend-test`：运行 `go test ./...`（包含临时 SQLite 存储测试）
 - `make backend-lint`：运行 `golangci-lint run ./...`
-- `make backend-integration`：运行 `go test -tags integration ./internal/repository`，需要 Docker 拉起 Testcontainers PostgreSQL
+- `make backend-storage-test`：运行 repository 测试，使用临时 SQLite 文件
 - `make backend-dev`：通过 Air 启动后端热重载
 
 ### Frontend / UI
@@ -56,19 +57,10 @@ source_of_truth:
 - `make generate`：重新生成 Go 服务端桩与 React 客户端
 - `make generate-check`：重新生成并断言 `backend/internal/api/generated` 与 `frontend/src/api/generated` 没有未提交漂移
 
-### 数据库迁移
-
-迁移命令直接调用 `golang-migrate`，`DATABASE_URL` 是必填环境变量：
-
-- `make migrate-up`
-- `make migrate-down-one`
-- `make migrate-version`
-- `make migrate-force VERSION=1`
-
 ### 总入口
 
 - `make verify`：依次执行 `openapi-lint` → `generate-check` → `backend-lint` → `backend-test` → `backend-build` → `frontend-lint` → `frontend-typecheck` → `frontend-test` → `frontend-build`
-- `make backend-integration` 不在 `verify` 内，仅在具备 Docker 时按需运行
+- `make backend-storage-test` 不在 `verify` 内，可单独运行存储层测试；不需要 Docker
 
 ## Rules
 
@@ -82,7 +74,7 @@ source_of_truth:
 ## Test Choice
 
 - 纯业务规则优先在 `service` 层测试（如 `backend/internal/service/example_test.go`）
-- 数据访问与 SQL/迁移行为优先在 `repository` 层用 Testcontainers 集成测试（`*_integration_test.go`，需 `//go:build integration`）
+- 数据访问与 SQL/迁移行为优先在 `repository` 层使用临时 SQLite 文件测试（`*_sqlite_test.go`）
 - 路由、中间件、Problem 转换在 `router` / `handler` / `middleware` 层用 `httptest` 测试
 - 前端纯辅助逻辑用轻量单元测试；UI 行为用 `@testing-library/react`（如 `frontend/src/pages/example-page.test.tsx`）
 - 不要默认选择最重的测试层
@@ -94,7 +86,7 @@ source_of_truth:
 - 纯文档修改
 - 纯格式调整
 - 明确行为不变的重命名
-- Testcontainers / Docker 不可用时跳过 `make backend-integration`，并在交付说明中记录
+- Compose / Docker 不可用时跳过 Compose 烟测，并在交付说明中记录
 - 外部依赖使本地稳定测试暂时不可行
 
 ## Minimum Verification

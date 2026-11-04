@@ -2,7 +2,7 @@
 status: active
 doc_type: standard
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - docs/ai/repo-rules.md
   - docs/standards/dependency-layering.md
@@ -49,7 +49,7 @@ source_of_truth:
 
 - 配置集中在 `backend/internal/config/config.go` 加载与校验
 - 必填环境变量缺失或格式不合法时进程直接退出，并打印明确错误
-- 环境变量包括：`API_PORT`、`LOG_LEVEL`、`DATABASE_URL`、`REDIS_URL`、`CORS_ORIGINS`
+- 环境变量包括：`API_PORT`、`LOG_LEVEL`、`DATABASE_PATH`、`CORS_ORIGINS`
 - 前端构建期变量 `VITE_API_BASE_URL` 在 `vite.config.ts` 通过 `define` 注入
 - 不在代码里散落第二套配置读取逻辑
 

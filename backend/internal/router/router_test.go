@@ -28,7 +28,7 @@ func (emptyExamples) Update(context.Context, int64, service.ExampleInput) (model
 func (emptyExamples) Delete(context.Context, int64) error { return nil }
 
 func TestLiveHealthIncludesBaseMiddlewares(t *testing.T) {
-	api := handler.NewAPI(emptyExamples{}, func(context.Context) error { return nil }, func(context.Context) error { return nil })
+	api := handler.NewAPI(emptyExamples{}, func(context.Context) error { return nil })
 	engine := New(api, config.Config{CORSOrigins: []string{"http://localhost:5173"}}, zap.NewNop())
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)

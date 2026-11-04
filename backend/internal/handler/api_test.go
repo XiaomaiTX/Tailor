@@ -31,8 +31,8 @@ func (f *fakeExamples) Update(context.Context, int64, service.ExampleInput) (mod
 }
 func (f *fakeExamples) Delete(context.Context, int64) error { return f.err }
 
-func TestReadyHealthRequiresBothDependencies(t *testing.T) {
-	api := NewAPI(&fakeExamples{}, func(context.Context) error { return nil }, func(context.Context) error { return errors.New("redis unavailable") })
+func TestReadyHealthRequiresDatabase(t *testing.T) {
+	api := NewAPI(&fakeExamples{}, func(context.Context) error { return errors.New("database unavailable") })
 	response, err := api.GetReadyHealth(context.Background(), generated.GetReadyHealthRequestObject{})
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestReadyHealthRequiresBothDependencies(t *testing.T) {
 }
 
 func TestListExamplesWritesValidationProblem(t *testing.T) {
-	api := NewAPI(&fakeExamples{err: service.ErrValidation}, func(context.Context) error { return nil }, func(context.Context) error { return nil })
+	api := NewAPI(&fakeExamples{err: service.ErrValidation}, func(context.Context) error { return nil })
 	response, err := api.ListExamples(context.Background(), generated.ListExamplesRequestObject{Params: generated.ListExamplesParams{Page: pointer(int32(0))}})
 	if err != nil {
 		t.Fatal(err)

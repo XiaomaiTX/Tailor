@@ -2,9 +2,8 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
-  - backend/migrations/000001_create_examples.up.sql
   - backend/internal/model/example.go
   - api/openapi/openapi.yaml
   - backend/internal/problem/problem.go
@@ -19,22 +18,16 @@ source_of_truth:
 
 ## Data Stores
 
-- **PostgreSQL**：唯一持久化数据存储
-  - 表：`examples`（`id BIGSERIAL`、`name VARCHAR(120) NOT NULL`、`description TEXT NULL`、`created_at` / `updated_at TIMESTAMPTZ`）
+- **SQLite**：唯一持久化数据存储，数据库文件由 `DATABASE_PATH` 指定
+  - 表：`examples`（`id INTEGER PRIMARY KEY AUTOINCREMENT`、`name VARCHAR(120) NOT NULL`、`description TEXT NULL`、`created_at` / `updated_at DATETIME`）
   - 索引：`idx_examples_created_at_id (created_at DESC, id DESC)`，支撑分页按创建时间倒序
-  - GORM 映射：`backend/internal/model/example.go`
-- **Redis**：当前仅用于 `/health/ready` 的就绪探针，不持久化业务数据
+  - GORM 模型和索引定义：`backend/internal/model/example.go`
 
-## Schema Migrations
+## Schema Setup
 
-- 迁移目录：`backend/migrations`
-- 工具：`golang-migrate v4.19.1`
-- 当前迁移：`000001_create_examples.up.sql` / `.down.sql`
-- 执行入口：
-  - 容器：`migrate` 服务（`docker-compose.example.yaml`）
-  - 本地 / CI：`make migrate-up`、`make migrate-down-one`、`make migrate-version`、`make migrate-force VERSION=...`
-- 必填变量：`DATABASE_URL`
-- 应用本身不建表、不变更 schema；迁移失败会阻塞 `backend` 启动
+- 后端启动时调用 GORM `AutoMigrate`，按 `model.Example` 创建或补充表结构与索引
+- 启动流程不依赖独立迁移容器、迁移命令或迁移版本表
+- GORM `AutoMigrate` 不会删除模型中已移除的列；需要破坏性变更或数据转换时再显式实现相应 SQL 操作
 
 ## Shared Contracts
 
@@ -57,10 +50,9 @@ source_of_truth:
 ## Compatibility Notes
 
 - 当前没有需要兼容字段或兼容模式的旧契约；首次契约变更时再补本节
-- 迁移若引入破坏性变更（删列、改类型），必须新增迁移文件并提供 down 迁移
 
 ## Invariants
 
 - 跨边界类型变更必须从 `api/openapi/openapi.yaml` 起步，再 `make generate`，再补 handler / service / 调用方
 - 同一契约不在多个路径分别维护
-- `examples` 表与 `model.Example` 字段一一对应，新增字段必须同步迁移、模型、OpenAPI schema 与生成产物
+- `examples` 表结构由 `model.Example` 驱动；新增 API 字段仍须同步 OpenAPI schema 与生成产物

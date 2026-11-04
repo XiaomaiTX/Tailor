@@ -2,7 +2,7 @@
 status: active
 doc_type: standard
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - docs/ai/repo-rules.md
   - docs/architecture/auth-and-permissions.md
@@ -28,19 +28,15 @@ source_of_truth:
 ## Core Rules
 
 - 密钥、token、密码、证书私钥不得提交到仓库
-- `.env`、`postgres-data/`、`redis-data/`、本地 TLS 证书等必须出现在 `.gitignore`
+- `.env`、`data/`、本地 TLS 证书等必须出现在 `.gitignore`
 - `.env.example` 只能包含占位值，例如 `change-me`，不得出现真实可用的凭据
-- 外部服务凭据（数据库、Redis、未来第三方 API）遵循最小权限原则
+- SQLite 文件目录只授予应用所需的读写权限；未来接入第三方服务时，其凭据遵循最小权限原则
 
 ## Sensitive Variables
 
 当前由 `.env` 注入的环境变量属于敏感配置，禁止外泄到日志、错误响应或前端构建产物：
 
-- `DATABASE_URL`
-- `REDIS_URL`
 - `CORS_ORIGINS`
-- `POSTGRES_PASSWORD`、`POSTGRES_USER`、`POSTGRES_DB`
-- `REDIS_PASSWORD`
 - 任何未来加入的第三方凭据
 
 Docker Compose 通过 `${VAR}` 从 `.env` 注入；Compose 文件本身只出现变量名，不出现明文值。
@@ -50,7 +46,7 @@ Docker Compose 通过 `${VAR}` 从 `.env` 注入；Compose 文件本身只出现
 敏感信息包括但不限于：
 
 - API keys、access tokens、refresh tokens
-- 数据库凭据
+- 本地 SQLite 数据文件
 - 私有证书
 - 用户身份信息（未来加入时）
 - 商业或客户敏感数据
@@ -77,7 +73,7 @@ Docker Compose 通过 `${VAR}` 从 `.env` 注入；Compose 文件本身只出现
 - 凭据来源：本地 `.env`，由用户从 `.env.example` 复制
 - 后端读取入口：`backend/internal/config/config.go`
 - Compose 注入点：`docker-compose.example.yaml` 的 `${VAR}` 占位
-- 必须加入 `.gitignore` 的路径：`.env`、`postgres-data/`、`redis-data/`、`backend/tmp/`
+- 必须加入 `.gitignore` 的路径：`.env`、`data/`、`backend/tmp/`
 
 ## When Adding Auth
 

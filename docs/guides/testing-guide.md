@@ -2,7 +2,7 @@
 status: active
 doc_type: guide
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - docs/standards/testing-and-verification.md
   - docs/standards/pre-completion-checklist.md
@@ -19,14 +19,14 @@ source_of_truth:
 
 - 已阅读 `docs/standards/testing-and-verification.md`
 - 已明确变更的根因所在层
-- 已准备 Go 1.27.3、pnpm 12.17.0；若要跑 `make backend-integration` 还需要 Docker
+- 已准备 Go 1.27.3、pnpm 12.17.0；Compose 烟测需要 Docker
 
 ## Layered Strategy
 
 | 根因层 | 选择 | 现有参考 |
 | --- | --- | --- |
 | 业务规则 / 输入归一化 | `service` 层单元测试 | `backend/internal/service/example_test.go` |
-| SQL / 迁移 / 数据访问 | `repository` 层集成测试（`//go:build integration` + Testcontainers） | `backend/internal/repository/example_integration_test.go` |
+| SQL / 迁移 / 数据访问 | `repository` 层临时 SQLite 文件测试 | `backend/internal/repository/example_sqlite_test.go` |
 | HTTP 入参解析、路由、Problem 映射 | `router` / `handler` 单元测试（`httptest`） | `backend/internal/router/router_test.go`、`backend/internal/handler/api_test.go` |
 | 配置加载 / Problem 输出 | `config`、`problem` 单元测试 | `backend/internal/config/config_test.go`、`backend/internal/problem/problem_test.go` |
 | 前端纯辅助逻辑 | 轻量单元测试 | `frontend/src/api/http.test.ts`、`frontend/src/i18n/i18n.test.tsx` |
@@ -44,7 +44,7 @@ source_of_truth:
 
 ```bash
 make backend-test
-make backend-integration   # 需要 Docker
+make backend-storage-test # 临时 SQLite 文件，无需 Docker
 make backend-lint
 make backend-build
 
@@ -55,7 +55,7 @@ make frontend-build
 
 make openapi-lint
 make generate-check
-make verify                # 一键本地验证（不含 backend-integration）
+make verify                # 一键本地验证（不含 backend-storage-test）
 ```
 
 ## Expected Outcome
@@ -67,5 +67,5 @@ make verify                # 一键本地验证（不含 backend-integration）
 
 - 不要默认上最重的 e2e
 - 不要只跑 `make backend-build` 就当作已完成行为验证
-- `make backend-integration` 跳过：若 Docker 不可用，测试代码会通过 `t.Skipf` 自动跳过；交付说明中应记录
+- `make backend-storage-test` 使用临时数据库文件，不依赖外部服务或 Docker
 - Vitest 默认 `environment: 'jsdom'`，新增依赖 DOM API 的测试时确认 setup 已包含

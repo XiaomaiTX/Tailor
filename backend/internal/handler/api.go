@@ -16,14 +16,13 @@ type Probe func(context.Context) error
 type API struct {
 	examples  service.ExampleService
 	database  Probe
-	redis     Probe
 	probeWait time.Duration
 }
 
 var _ generated.StrictServerInterface = (*API)(nil)
 
-func NewAPI(examples service.ExampleService, database, redis Probe) *API {
-	return &API{examples: examples, database: database, redis: redis, probeWait: 2 * time.Second}
+func NewAPI(examples service.ExampleService, database Probe) *API {
+	return &API{examples: examples, database: database, probeWait: 2 * time.Second}
 }
 
 func (api *API) ListExamples(ctx context.Context, request generated.ListExamplesRequestObject) (generated.ListExamplesResponseObject, error) {
@@ -86,9 +85,6 @@ func (api *API) GetReadyHealth(ctx context.Context, _ generated.GetReadyHealthRe
 	probeContext, cancel := context.WithTimeout(ctx, api.probeWait)
 	defer cancel()
 	if err := api.database(probeContext); err != nil {
-		return readyInternal(), nil
-	}
-	if err := api.redis(probeContext); err != nil {
 		return readyInternal(), nil
 	}
 	return generated.GetReadyHealth200JSONResponse(generated.HealthStatus{Status: "ok"}), nil

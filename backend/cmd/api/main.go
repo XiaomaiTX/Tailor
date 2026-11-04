@@ -6,18 +6,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/XiaomaiTX/go-react-starter/internal/config"
 	"github.com/XiaomaiTX/go-react-starter/internal/handler"
+	"github.com/XiaomaiTX/go-react-starter/internal/model"
 	"github.com/XiaomaiTX/go-react-starter/internal/repository"
 	"github.com/XiaomaiTX/go-react-starter/internal/router"
 	"github.com/XiaomaiTX/go-react-starter/internal/service"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -30,28 +31,25 @@ func main() {
 	logger := newLogger(cfg.LogLevel)
 	defer logger.Sync() //nolint:errcheck
 
-	database, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	if err := os.MkdirAll(filepath.Dir(cfg.DatabasePath), 0o750); err != nil {
+		logger.Fatal("创建 SQLite 数据库目录失败", zap.Error(err))
+	}
+	database, err := gorm.Open(sqlite.Open(cfg.DatabasePath), &gorm.Config{})
 	if err != nil {
-		logger.Fatal("连接 PostgreSQL 失败", zap.Error(err))
+		logger.Fatal("打开 SQLite 数据库失败", zap.Error(err))
+	}
+	if err := database.AutoMigrate(&model.Example{}); err != nil {
+		logger.Fatal("初始化 SQLite 表结构失败", zap.Error(err))
 	}
 	sqlDatabase, err := database.DB()
 	if err != nil {
-		logger.Fatal("获取 PostgreSQL 连接池失败", zap.Error(err))
+		logger.Fatal("获取 SQLite 连接池失败", zap.Error(err))
 	}
 	defer sqlDatabase.Close() //nolint:errcheck
 
-	redisOptions, err := redis.ParseURL(cfg.RedisURL)
-	if err != nil {
-		logger.Fatal("解析 Redis URL 失败", zap.Error(err))
-	}
-	redisClient := redis.NewClient(redisOptions)
-	defer redisClient.Close() //nolint:errcheck
-
 	exampleRepository := repository.NewExampleRepository(database)
 	exampleService := service.NewExampleService(exampleRepository)
-	api := handler.NewAPI(exampleService, sqlDatabase.PingContext, func(ctx context.Context) error {
-		return redisClient.Ping(ctx).Err()
-	})
+	api := handler.NewAPI(exampleService, sqlDatabase.PingContext)
 	engine := router.New(api, cfg, logger)
 	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.APIPort), Handler: engine, ReadHeaderTimeout: 5 * time.Second}
 

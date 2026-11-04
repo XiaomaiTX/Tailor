@@ -2,7 +2,7 @@
 status: active
 doc_type: index
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - AGENTS.md
   - docs/ai/repo-rules.md
@@ -20,7 +20,7 @@ source_of_truth:
 
 ## 项目定位
 
-Go React Starter 是一个中性、可扩展的 Web 技术基座：Gin、GORM/PostgreSQL、Redis、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件共同提供最小可运行链路。`/examples` 是可被替换的端到端示例资源，不是业务能力。
+Go React Starter 是一个中性、可扩展的 Web 技术基座：Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件共同提供最小可运行链路。`/examples` 是可被替换的端到端示例资源，不是业务能力。
 
 ## Authority Order
 

@@ -5,8 +5,10 @@ owner: engineering
 last_reviewed: 2026-08-05
 source_of_truth:
   - frontend/src/pages/example-page.tsx
+  - backend/cmd/api/main.go
   - backend/internal/handler/api.go
   - backend/internal/service/example.go
+  - backend/internal/model/example.go
   - api/openapi/openapi.yaml
 ---
 
@@ -18,7 +20,7 @@ source_of_truth:
 
 - 提供可被替换的中性资源 CRUD 链路
 - 验证 OpenAPI 契约 → Go 生成桩 → React Query hooks 的代码生成与类型一致
-- 验证健康探针、Problem 错误响应、CORS、安全头、迁移等基础设施
+- 验证健康探针、Problem 错误响应、CORS、安全头和 SQLite 表结构初始化
 
 ## Entry Points
 
@@ -42,7 +44,7 @@ source_of_truth:
 
 - Example 列表分页：`page ≥ 1`、`1 ≤ pageSize ≤ 100`，排序固定为 `created_at DESC, id DESC`
 - `name` 长度 1–120（按 UTF-8 字符计数，使用 `[]rune`）；`description` 可空，最长 2000 字符
-- 数据库列与 `model.Example` 字段一一对应；任何字段变化必须同步迁移、模型、OpenAPI schema、生成产物
+- SQLite 表结构由 `model.Example` 定义并在后端启动时自动初始化；API 字段变化需同步 OpenAPI schema 与生成产物
 - 错误响应必须经 `internal/problem` 输出为 `application/problem+json`；handler / service 不直接拼装错误 JSON
 - 前端调用必须走 `@/api/generated/client` 暴露的 React Query hooks，写操作完成后通过 `queryClient.invalidateQueries` 让列表与单条缓存失效
 
@@ -54,7 +56,6 @@ source_of_truth:
   - [backend/internal/service/example.go](../../backend/internal/service/example.go)
   - [backend/internal/repository/example.go](../../backend/internal/repository/example.go)
   - [backend/internal/model/example.go](../../backend/internal/model/example.go)
-- 迁移：[backend/migrations/000001_create_examples.up.sql](../../backend/migrations/000001_create_examples.up.sql)
 - 前端：
   - [frontend/src/pages/example-page.tsx](../../frontend/src/pages/example-page.tsx)
   - [frontend/src/api/generated/client.ts](../../frontend/src/api/generated/client.ts)

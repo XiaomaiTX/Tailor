@@ -1,53 +1,14 @@
 services:
-  postgres:
-    image: postgres:17.6-alpine3.22
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - ./postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  redis:
-    image: redis:7.4.2-alpine
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
-    volumes:
-      - ./redis-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  migrate:
-    image: migrate/migrate:v4.19.1
-    command: ["-path", "/migrations", "-database", "${DATABASE_URL}", "up"]
-    volumes:
-      - ./backend/migrations:/migrations:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
   backend:
     build:
       context: ./backend
     environment:
       API_PORT: ${API_PORT}
       LOG_LEVEL: ${LOG_LEVEL}
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_PATH: /data/app.db
       CORS_ORIGINS: ${CORS_ORIGINS}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
+    volumes:
+      - ./data:/data
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health/live"]
       interval: 10s

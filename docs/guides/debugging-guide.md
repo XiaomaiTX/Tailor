@@ -2,7 +2,7 @@
 status: active
 doc_type: guide
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - docs/architecture/runtime-and-startup.md
   - docs/standards/security-and-secrets.md
@@ -33,18 +33,17 @@ source_of_truth:
 ### 配置校验失败
 
 - 现象：`config.Load()` 直接退出，stderr 打印中文错误
-- 检查：`.env` 是否存在；`DATABASE_URL` 协议是否为 `postgres` / `postgresql`；`REDIS_URL` 是否为 `redis` / `rediss`；`CORS_ORIGINS` 是否为空；`LOG_LEVEL` 是否为 `debug` / `info` / `warn` / `error`
+- 检查：`.env` 是否存在；`DATABASE_PATH` 是否指向可写 SQLite 文件；`CORS_ORIGINS` 是否为空；`LOG_LEVEL` 是否为 `debug` / `info` / `warn` / `error`
 
-### 数据库或 Redis 未就绪
+### 数据库未就绪
 
 - 现象：`/health/ready` 返回 `500 application/problem+json`
-- 检查：PostgreSQL 与 Redis 进程是否在运行；DSN 中的主机、端口、密码；本地 Air 是否正确加载 `.env`
-- 最小验证：`psql "$DATABASE_URL" -c '\dt'` 与 `redis-cli -a "$REDIS_PASSWORD" ping`（或等价工具）
+- 检查：SQLite 文件路径和父目录权限；本地 Air 是否正确加载 `.env`
 
-### 迁移失败
+### SQLite 表结构初始化失败
 
-- 现象：`make migrate-up` 或 `migrate` 容器报错
-- 检查：`DATABASE_URL` 是否正确；迁移目录是否最新；`migrate-version` 查看当前版本；必要时 `make migrate-force VERSION=1` 重置
+- 现象：后端启动日志报告 SQLite 表结构初始化失败
+- 检查：`DATABASE_PATH` 是否指向可写文件；父目录是否存在或可创建；GORM 模型定义是否与当前 SQLite 表兼容
 
 ### OpenAPI 与生成代码漂移
 

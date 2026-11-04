@@ -2,7 +2,7 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - backend/cmd/api/main.go
   - backend/internal/router/router.go
@@ -27,16 +27,16 @@ Go React Starter 是一个中性、可扩展的 Web 技术基座。Go API 与 Re
 - 后端运行形态：单进程 HTTP 服务，监听 `:$API_PORT`（默认 8080）
 - 前端运行形态：Vite 开发服务器（本地）或 Nginx 静态资源 + 反向代理（容器）
 - 主要技术栈：
-  - Go 1.27.3、Gin、GORM、PostgreSQL 17、Redis 7、Zap
+  - Go 1.27.3、Gin、GORM、SQLite、Zap
   - React 19、Vite、React Query、React Router、Tailwind、shadcn 风格组件、Zustand
   - OpenAPI 3.0.3、oapi-codegen（Go 服务端）、orval（React 客户端）
 - 主要模块：`config`、`router`、`handler`、`service`、`repository`、`model`、`middleware`、`problem`
-- 容器化：`docker-compose.example.yaml` 串联 postgres、redis、migrate、backend、frontend
+- 容器化：`docker-compose.example.yaml` 启动 backend、frontend；SQLite 文件通过共享数据卷持久化
 
 ## Subsystems
 
 - **后端 API**：`backend/internal/` 下的分层 Go 服务
-- **数据库迁移**：`backend/migrations/`，由 `migrate` 服务或 `make migrate-*` 命令执行
+- **数据库表结构**：由 `backend/internal/model/` 中的 GORM 模型定义，后端启动时自动创建或补充
 - **前端 SPA**：`frontend/src/`，通过生成的 React Query hooks 调用后端
 - **OpenAPI 契约**：`api/openapi/openapi.yaml`，是跨端类型与客户端的唯一来源
 - **Compose 编排**：`docker-compose.example.yaml`，串联以上组件并定义启动顺序与健康检查

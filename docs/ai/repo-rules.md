@@ -2,7 +2,7 @@
 status: active
 doc_type: agent-rules
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - AGENTS.md
   - docs/README.md
@@ -67,8 +67,8 @@ source_of_truth:
 当前基座事实：
 
 - 项目目标：提供可替换的端到端示例资源（`/examples`）链路，不绑定业务域
-- 技术栈：Go 1.27.3（Gin、GORM、PostgreSQL、Redis、Zap）、React 19（Vite、React Query、Tailwind、shadcn 风格组件）、OpenAPI 3.0.3 作为跨端契约源
-- 目录结构：`api/openapi`、`backend/{cmd,internal,migrations}`、`frontend/src`、`docs`、Compose 示例
+- 技术栈：Go 1.27.3（Gin、GORM、SQLite、Zap）、React 19（Vite、React Query、Tailwind、shadcn 风格组件）、OpenAPI 3.0.3 作为跨端契约源
+- 目录结构：`api/openapi`、`backend/{cmd,internal}`、`frontend/src`、`docs`、Compose 示例
 - 核心模块：`config`、`router`、`handler`、`service`、`repository`、`model`、`middleware`、`problem`
 - 权限模型：当前无身份认证；所有接口默认公开
 - 接口边界：`/api/v1` JSON HTTP API；详见 `docs/api/conventions.md` 与 `docs/api/route-index.md`

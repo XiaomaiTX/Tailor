@@ -2,7 +2,7 @@
 status: active
 doc_type: api
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - api/openapi/openapi.yaml
   - backend/internal/router/router.go
@@ -20,7 +20,7 @@ source_of_truth:
 | Type | Identifier | Purpose | Auth / Trust Boundary | Consumer |
 | --- | --- | --- | --- | --- |
 | HTTP GET | `/api/v1/health/live` | 进程存活探针 | 公开；Compose `backend` healthcheck 调用 | Compose、Nginx、运维监控 |
-| HTTP GET | `/api/v1/health/ready` | 依赖就绪探针（PostgreSQL + Redis） | 公开；返回 `200` 或 `500 problem+json` | Compose、运维监控 |
+| HTTP GET | `/api/v1/health/ready` | SQLite 数据库就绪探针 | 公开；返回 `200` 或 `500 problem+json` | Compose、运维监控 |
 | HTTP GET | `/api/v1/examples` | 分页列出 Example | 公开 | 前端 `useListExamples` |
 | HTTP POST | `/api/v1/examples` | 创建 Example | 公开 | 前端 `useCreateExample` |
 | HTTP GET | `/api/v1/examples/{id}` | 获取单个 Example | 公开 | 前端 `useGetExample` |

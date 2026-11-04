@@ -2,7 +2,7 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - backend/internal/
   - frontend/src/
@@ -28,10 +28,9 @@ source_of_truth:
 | `middleware` | `RequestID` 等 | `backend/internal/middleware` | `gin`、`problem`、`zap` | 安全头、CORS、访问日志、Recovery |
 | `handler` | `handler.API` | `backend/internal/handler` | `generated`、`service`、`problem`、`model` | HTTP 入参与响应映射 |
 | `service` | `ExampleService` | `backend/internal/service` | `repository`、`model` | 业务规则、输入归一化 |
-| `repository` | `ExampleRepository` | `backend/internal/repository` | `gorm`、`model` | 数据访问与迁移兼容 |
+| `repository` | `ExampleRepository` | `backend/internal/repository` | `gorm`、`model` | 数据访问 |
 | `model` | `Example` | `backend/internal/model` | GORM struct | 数据库表映射 |
 | `problem` | `problem.Write` | `backend/internal/problem` | `gin`、`net/http` | RFC 7807 错误响应 |
-| `migrations` | `000001_create_examples` | `backend/migrations` | PostgreSQL | 表结构与索引 |
 | `generated`（Go） | `openapi.gen.go` | `backend/internal/api/generated` | `oapi-codegen` 输出 | 严格服务端接口与 DTO |
 
 ### 前端
@@ -54,7 +53,7 @@ source_of_truth:
 | --- | --- | --- | --- | --- |
 | OpenAPI | `openapi.yaml` | `api/openapi/openapi.yaml` | Redocly、oapi-codegen、orval | 契约源 |
 | Makefile | `verify` 等 | `Makefile` | Go、pnpm、golangci-lint | 默认验证入口 |
-| Compose | `docker-compose.example.yaml` | 仓库根 | postgres、redis、migrate、backend、frontend | 容器化编排 |
+| Compose | `docker-compose.example.yaml` | 仓库根 | backend、frontend | 容器化编排 |
 
 ## Boundaries
 

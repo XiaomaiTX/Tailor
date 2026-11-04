@@ -1,6 +1,6 @@
 # Go React Starter
 
-Go React Starter 是一个中性、可扩展的 Web 技术基座：Gin、GORM/PostgreSQL、Redis、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn/ui 共同提供最小可运行链路。
+Go React Starter 是一个中性、可扩展的 Web 技术基座：Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn/ui 共同提供最小可运行链路。
 
 ## 首次启动
 
@@ -9,11 +9,11 @@ cp .env.example .env
 docker compose up --build
 ```
 
-浏览器访问 `http://localhost:8080`。首次启动时 `migrate` 服务会对空数据库执行首条 migration，成功后才启动后端；应用本身不会建表或变更 schema。
+浏览器访问 `http://localhost:8080`。后端启动时会按 GORM 模型自动创建或补充 SQLite 表结构；数据库文件保存在仓库根目录的 `data/app.db`。
 
 ## 本地开发
 
-准备一个独立 PostgreSQL、Redis，并将 `.env` 中的 `DATABASE_URL`、`REDIS_URL` 改为本机可连接的地址。首次本地开发先安装前端依赖：
+SQLite 会使用本地文件，无需单独启动数据库服务。`.env` 示例将数据库文件设为 `backend/data/app.db`（后端命令的工作目录是 `backend/`）。首次本地开发先安装前端依赖：
 
 ```powershell
 cd frontend
@@ -47,14 +47,10 @@ pnpm dev
 make openapi-lint
 make generate
 make generate-check
-make migrate-up
-make migrate-down-one
-make migrate-version
-make migrate-force VERSION=1
-make backend-integration
+make backend-storage-test
 make verify
 ```
 
-`DATABASE_URL` 是迁移命令的必填环境变量。`make verify` 是本地默认验证命令，不包含 Docker Compose 烟测；`make backend-integration` 仅在具备 Docker 时可选执行。若 Compose 无法启动，先确认端口未占用、Docker Desktop 已运行，以及本项目本地数据目录的权限正确。
+`make verify` 是本地默认验证命令，不包含 Docker Compose 烟测；`make backend-storage-test` 使用临时 SQLite 文件，不需要 Docker。若 Compose 无法启动，先确认端口未占用、Docker Desktop 已运行，以及本地数据目录的权限正确。
 
 更多说明见 [文档索引](docs/README.md)。
