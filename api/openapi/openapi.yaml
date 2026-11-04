@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: Go React Starter API
+  version: 1.0.0
+  description: Go React Starter 的中性 API 基座。
+servers:
+  - url: /api/v1
+security: []
+tags:
+  - name: health
+    description: 服务存活与依赖就绪状态。
+  - name: examples
+    description: 用于验证技术链路的中性资源。
+paths:
+  /health/live:
+    get:
+      tags: [health]
+      summary: 获取存活状态
+      operationId: getLiveHealth
+      responses:
+        '200':
+          description: 进程可服务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '500':
+          $ref: '#/components/responses/InternalProblem'
+  /health/ready:
+    get:
+      tags: [health]
+      summary: 获取就绪状态
+      operationId: getReadyHealth
+      responses:
+        '200':
+          description: 依赖已就绪
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '500':
+          $ref: '#/components/responses/InternalProblem'
+  /examples:
+    get:
+      tags: [examples]
+      summary: 列出 Example
+      operationId: listExamples
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Example 分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExampleList'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '500':
+          $ref: '#/components/responses/InternalProblem'
+    post:
+      tags: [examples]
+      summary: 创建 Example
+      operationId: createExample
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExampleInput'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Example'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '500':
+          $ref: '#/components/responses/InternalProblem'
+  /examples/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ExampleId'
+    get:
+      tags: [examples]
+      summary: 获取 Example
+      operationId: getExample
+      responses:
+        '200':
+          description: Example
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Example'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '500':
+          $ref: '#/components/responses/InternalProblem'
+    put:
+      tags: [examples]
+      summary: 更新 Example
+      operationId: updateExample
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExampleInput'
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Example'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '500':
+          $ref: '#/components/responses/InternalProblem'
+    delete:
+      tags: [examples]
+      summary: 删除 Example
+      operationId: deleteExample
+      responses:
+        '204':
+          description: 已删除
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '500':
+          $ref: '#/components/responses/InternalProblem'
+components:
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+    ExampleId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+    Example:
+      type: object
+      required: [id, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ExampleInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+    ExampleList:
+      type: object
+      required: [page, pageSize, list, total]
+      properties:
+        page:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Example'
+        total:
+          type: integer
+          format: int64
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+  responses:
+    ValidationProblem:
+      description: 请求不合法
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFoundProblem:
+      description: 资源不存在
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalProblem:
+      description: 服务内部错误
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

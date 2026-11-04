@@ -1,0 +1,56 @@
+name: Docker Image Publish（暂不启用）
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Docker 镜像构建暂不执行
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Docker 镜像构建已暂时禁用。"
+
+# 启用方式：删除上方 disabled job，并取消下方工作流定义的注释。
+# 该定义沿用 main 与 preview 分支构建逻辑；不会包含任何部署 Webhook。
+# name: Docker Image Publish
+#
+# on:
+#   push:
+#     branches: [main, preview]
+#
+# permissions:
+#   contents: read
+#
+# jobs:
+#   build-and-push:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v6
+#       - uses: docker/setup-buildx-action@v3
+#       - uses: docker/login-action@v3
+#         with:
+#           username: ${{ vars.DOCKER_HUB_USERNAME }}
+#           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+#       - name: 设置短提交号
+#         run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+#       - name: 构建并推送后端
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ./backend
+#           push: true
+#           tags: |
+#             ${{ vars.DOCKER_HUB_REPO }}-backend:latest
+#             ${{ vars.DOCKER_HUB_REPO }}-backend:${{ env.SHORT_SHA }}
+#       - name: 构建并推送前端
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ./frontend
+#           push: true
+#           build-args: VITE_API_BASE_URL=/api/v1
+#           tags: |
+#             ${{ vars.DOCKER_HUB_REPO }}-frontend:latest
+#             ${{ vars.DOCKER_HUB_REPO }}-frontend:${{ env.SHORT_SHA }}

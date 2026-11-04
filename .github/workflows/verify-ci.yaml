@@ -1,0 +1,131 @@
+name: Verify
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      contract: ${{ steps.filter.outputs.contract }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'backend/Dockerfile'
+              - 'docker-compose.yaml'
+              - 'Makefile'
+            frontend:
+              - 'frontend/**'
+              - 'frontend/Dockerfile'
+              - 'docker-compose.yaml'
+              - 'Makefile'
+            contract:
+              - 'api/openapi/**'
+              - 'redocly.yaml'
+              - 'frontend/orval.config.ts'
+              - 'backend/internal/api/generated/**'
+              - 'frontend/src/api/generated/**'
+              - 'Makefile'
+
+  contract:
+    name: API Contract Verify
+    needs: changes
+    if: needs.changes.outputs.contract == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.17.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+      - name: Lint and generate-check
+        run: make openapi-lint generate-check
+
+  backend:
+    name: Backend Verify
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.contract == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.4
+          working-directory: backend
+      - name: Test
+        working-directory: backend
+        run: go test ./...
+      - name: Build
+        working-directory: backend
+        run: go build ./cmd/api
+
+  frontend:
+    name: React Frontend Verify
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.contract == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.17.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+      - name: Lint
+        run: pnpm --dir frontend lint
+      - name: Type check
+        run: pnpm --dir frontend exec tsc -b
+      - name: Unit tests
+        run: pnpm --dir frontend test
+      - name: Build
+        run: pnpm --dir frontend build
+
+  ci-passed:
+    name: CI Passed
+    if: always()
+    needs: [changes, contract, backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.changes.result }}" == "failure" || "${{ needs.contract.result }}" == "failure" || "${{ needs.backend.result }}" == "failure" || "${{ needs.frontend.result }}" == "failure" ]]; then
+            echo "::error::验证失败"
+            exit 1
+          fi
+          echo "验证通过，未命中的路径检查已跳过。"

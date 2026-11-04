@@ -1,0 +1,27 @@
+root = "."
+tmp_dir = "tmp"
+env_files = ["../.env"]
+
+[build]
+cmd = "go build -o ./tmp/main ./cmd/api"
+entrypoint = ["./tmp/main"]
+include_ext = ["go"]
+exclude_dir = ["tmp", "bin", "logs", ".git"]
+exclude_regex = ["_test\\.go"]
+delay = 300
+stop_on_error = true
+send_interrupt = true
+kill_delay = 500
+
+[build.windows]
+cmd = "go build -o ./tmp/main.exe ./cmd/api"
+entrypoint = ["tmp\\main.exe"]
+
+[log]
+time = false
+
+[misc]
+clean_on_exit = true
+
+[screen]
+clear_on_rebuild = false
