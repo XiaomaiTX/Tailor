@@ -2,10 +2,12 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - backend/cmd/api/main.go
   - backend/internal/router/router.go
+  - frontend/src/app/router.tsx
+  - frontend/src/App.tsx
   - frontend/src/main.tsx
   - api/openapi/openapi.yaml
 ---
@@ -32,7 +34,7 @@ Describes Tailor's current structure. OpenAPI is the shared API contract; code i
 - **Policy model**: HuJSON parsing, grant classification, safe grant replacement, and semantic hashes in `backend/internal/policy/`.
 - **Business service**: authorization, registration/review lifecycle, graph projection, policy commits, rollback, audit, and sync in `backend/internal/service/peer_relay.go`.
 - **Persistence**: GORM models and repository in `backend/internal/model/peer_relay.go` and `backend/internal/repository/peer_relay.go`.
-- **Frontend console**: `frontend/src/App.tsx` delegates to `frontend/src/features/peer-relay/peer-relay-console.tsx`; each dashboard, relay directory, application, graph editor, policy, and settings view lives in its own feature page module.
+- **Frontend console**: `frontend/src/app/router.tsx` defines the routes, mounts each page directly, and owns navigation and access/login redirects. `frontend/src/App.tsx` composes the sidebar, shared header, session status, and `Outlet`. Each feature page owns its queries, mutations, and dialogs; shared cached query helpers live in `features/peer-relay/queries.ts`.
 
 ## Key Entry Files
 
@@ -41,8 +43,9 @@ Describes Tailor's current structure. OpenAPI is the shared API contract; code i
 - Peer Relay HTTP adapter: [backend/internal/handler/peer_relay.go](../../backend/internal/handler/peer_relay.go)
 - Headscale provider: [backend/internal/headscale/client.go](../../backend/internal/headscale/client.go)
 - Policy document adapter: [backend/internal/policy/document.go](../../backend/internal/policy/document.go)
-- Frontend SPA entry: [frontend/src/App.tsx](../../frontend/src/App.tsx)
-- Peer Relay console: [frontend/src/features/peer-relay/peer-relay-console.tsx](../../frontend/src/features/peer-relay/peer-relay-console.tsx)
+- Frontend route assembly: [frontend/src/app/router.tsx](../../frontend/src/app/router.tsx)
+- Frontend layout: [frontend/src/App.tsx](../../frontend/src/App.tsx)
+- Peer Relay pages: [frontend/src/features/peer-relay/pages/](../../frontend/src/features/peer-relay/pages/)
 - Contract: [api/openapi/openapi.yaml](../../api/openapi/openapi.yaml)
 
 ## Invariants

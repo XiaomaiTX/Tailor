@@ -1,7 +1,23 @@
-import { useState } from "react"
-import { Bell, MapPin } from "lucide-react"
-import type { Device, RelayApplication } from "@/api/generated/model"
+import type {
+  Device,
+  RelayApplication,
+  ReviewInput,
+} from "@/api/generated/model"
+import { peerRelayApi } from "@/api/peer-relay"
 import { Button } from "@/components/ui/button"
+import {
+  ApplicationDialog,
+  ReviewDialog,
+} from "@/features/peer-relay/components/dialogs"
+import { useI18n } from "@/i18n"
+import { useMutation } from "@tanstack/react-query"
+import { Bell } from "lucide-react"
+import { useState } from "react"
+
+import {
+  PageHeading,
+  Toast,
+} from "@/features/peer-relay/components/page-heading"
 import {
   DeviceIcon,
   EmptyState,
@@ -9,6 +25,9 @@ import {
   Pagination,
   StatusTag,
 } from "@/features/peer-relay/components/view-primitives"
+import { queryKeys, usePeerRelayData } from "@/features/peer-relay/queries"
+import { useToast } from "@/features/peer-relay/use-toast"
+import { MapPin } from "lucide-react"
 
 export function ApplicationsPage({
   applications,
@@ -154,5 +173,115 @@ export function ApplicationsPage({
         />
       ) : null}
     </div>
+  )
+}
+
+export function ApplicationsRoute() {
+  const { t } = useI18n()
+  const {
+    queryClient,
+    currentUser,
+    isReviewer,
+    canApply,
+    devices,
+    applicationsQuery,
+    refreshAll,
+  } = usePeerRelayData()
+  const { toast, setToast } = useToast()
+  const [applicationOpen, setApplicationOpen] = useState(false)
+  const [reviewTarget, setReviewTarget] = useState<{
+    application: RelayApplication
+    decision: "approved" | "rejected"
+  } | null>(null)
+  const [reviewNote, setReviewNote] = useState("")
+  const applicationMutation = useMutation({
+    mutationFn: peerRelayApi.apply,
+    onSuccess: async () => {
+      setApplicationOpen(false)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.applications }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+      ])
+      setToast(t("relay.applications.submitted"))
+    },
+  })
+
+  const cancelApplicationMutation = useMutation({
+    mutationFn: peerRelayApi.cancelApplication,
+    onSuccess: () => refreshAll(),
+  })
+
+  const reviewMutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ReviewInput }) =>
+      peerRelayApi.review(id, input),
+    onSuccess: async () => {
+      setReviewTarget(null)
+      setReviewNote("")
+      await refreshAll()
+    },
+  })
+
+  const userApplications = applicationsQuery.data ?? []
+
+  return (
+    <>
+      <PageHeading section="applications" />
+      <ApplicationsPage
+        applications={userApplications}
+        devices={devices.filter(
+          (device) =>
+            device.username.toLocaleLowerCase() ===
+              currentUser?.username?.toLocaleLowerCase() &&
+            device.tags.length === 0 &&
+            !device.missing
+        )}
+        isReviewer={isReviewer}
+        canApply={canApply}
+        isLoading={applicationsQuery.isLoading}
+        t={t}
+        onCreate={() => setApplicationOpen(true)}
+        onCancel={(application) =>
+          cancelApplicationMutation.mutate(application.id)
+        }
+        onReview={(application, decision) => {
+          setReviewNote("")
+          setReviewTarget({ application, decision })
+        }}
+      />
+      {applicationOpen ? (
+        <ApplicationDialog
+          devices={devices.filter(
+            (device) =>
+              device.username.toLocaleLowerCase() ===
+                currentUser?.username?.toLocaleLowerCase() &&
+              device.tags.length === 0 &&
+              !device.missing
+          )}
+          t={t}
+          isPending={applicationMutation.isPending}
+          error={applicationMutation.error}
+          onClose={() => setApplicationOpen(false)}
+          onSubmit={(input) => applicationMutation.mutate(input)}
+        />
+      ) : null}
+
+      {reviewTarget ? (
+        <ReviewDialog
+          key={reviewTarget.application.id}
+          target={reviewTarget}
+          note={reviewNote}
+          setNote={setReviewNote}
+          t={t}
+          isPending={reviewMutation.isPending}
+          error={reviewMutation.error}
+          onClose={() => setReviewTarget(null)}
+          onSubmit={(input) =>
+            reviewMutation.mutate({ id: reviewTarget.application.id, input })
+          }
+        />
+      ) : null}
+
+      <Toast message={toast} />
+    </>
   )
 }

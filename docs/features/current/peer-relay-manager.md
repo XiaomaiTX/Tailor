@@ -7,7 +7,9 @@ source_of_truth:
   - api/openapi/openapi.yaml
   - backend/internal/service/peer_relay.go
   - backend/internal/policy/document.go
-  - frontend/src/features/peer-relay/peer-relay-console.tsx
+  - frontend/src/app/router.tsx
+  - frontend/src/App.tsx
+  - frontend/src/features/peer-relay/queries.ts
   - frontend/src/features/peer-relay/pages/
   - frontend/src/features/peer-relay/components/
   - frontend/src/components/app-sidebar.tsx
@@ -105,7 +107,7 @@ The API contract is `api/openapi/openapi.yaml`; routes are indexed in `docs/api/
 
 ## Frontend Module Boundaries
 
-`frontend/src/app/router.tsx` declares the browser routes for the console pages, login, and not found. The Peer Relay console owns the shared page shell, permission-filtered navigation data, React Query state, and mutation orchestration; router paths select each routed page and preserve page state in the URL/history. Administrators can open the policy and settings routes, while applicants and reviewers can open the requests route. `frontend/src/components/app-sidebar.tsx` renders the responsive collapsible sidebar, `nav-main.tsx` renders page choices, and `nav-user.tsx` renders account controls. Each user-facing view remains a separate module under `frontend/src/features/peer-relay/pages/`. Feature dialogs and presentation helpers live under the feature's `components/` directory. Shared controls under `frontend/src/components/ui/` follow the configured shadcn aria-sera style and consume the global theme tokens in `frontend/src/index.css`.
+`frontend/src/app/router.tsx` mounts each page directly and owns browser paths, matching, navigation, and access/login redirects. `frontend/src/App.tsx` composes the sidebar, shared header, session status, and `Outlet`; `main.tsx` configures providers and connects query errors to the router handler. Each route page under `features/peer-relay/pages/` owns its content, queries, mutations, and dialogs. Shared cached query helpers live in `features/peer-relay/queries.ts`. Administrators can open the policy and settings routes, while applicants and reviewers can open the requests route. `frontend/src/components/app-sidebar.tsx` renders the responsive collapsible sidebar, `nav-main.tsx` renders page choices, and `nav-user.tsx` renders account controls. Each user-facing view remains a separate module under `frontend/src/features/peer-relay/pages/`. Feature dialogs and presentation helpers live under the feature's `components/` directory. Shared controls under `frontend/src/components/ui/` follow the configured shadcn aria-sera style and consume the global theme tokens in `frontend/src/index.css`.
 
 ## Known MVP Limits
 

@@ -1,30 +1,43 @@
-import {
-  Activity,
-  ArrowRight,
-  ArrowUpRight,
-  Bell,
-  Check,
-  ChevronRight,
-  Circle,
-  Link2,
-  LockKeyhole,
-  Radio,
-  RadioTower,
-  RefreshCw,
-  Server,
-  Waypoints,
-} from "lucide-react"
 import type { Device, Relay, RelayApplication } from "@/api/generated/model"
+import { peerRelayApi } from "@/api/peer-relay"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useI18n } from "@/i18n"
+import { cn } from "@/lib/utils"
+import { useMutation } from "@tanstack/react-query"
+import {
+  Activity,
+  Bell,
+  Check,
+  RadioTower,
+  RefreshCw,
+  Waypoints,
+} from "lucide-react"
+
+import { usePageNavigation } from "@/app/router"
+import {
+  PageHeading,
+  Toast,
+} from "@/features/peer-relay/components/page-heading"
 import {
   DeviceIcon,
   EmptyState,
   MetricCard,
   StatusTag,
 } from "@/features/peer-relay/components/view-primitives"
+import { usePeerRelayData } from "@/features/peer-relay/queries"
+import { useToast } from "@/features/peer-relay/use-toast"
 import { formatDate } from "@/features/peer-relay/utils"
-import { cn } from "@/lib/utils"
+import {
+  ArrowRight,
+  ArrowUpRight,
+  ChevronRight,
+  Circle,
+  Link2,
+  LockKeyhole,
+  Radio,
+  Server,
+} from "lucide-react"
 
 export function OverviewPage({
   dashboard,
@@ -311,5 +324,55 @@ export function OverviewPage({
         </aside>
       </section>
     </div>
+  )
+}
+
+export function OverviewRoute() {
+  const { t, locale } = useI18n()
+  const {
+    dashboardQuery,
+    dashboard,
+    isAdmin,
+    devices,
+    relays,
+    applicationsQuery,
+    refreshAll,
+  } = usePeerRelayData()
+  const { toast, setToast } = useToast()
+  const syncMutation = useMutation({
+    mutationFn: peerRelayApi.sync,
+    onSuccess: async () => {
+      await refreshAll()
+      setToast(t("relay.header.synced"))
+    },
+  })
+
+  const onNavigate = usePageNavigation()
+  const openEditor = (deviceId?: string) =>
+    onNavigate("editor", { nodeID: deviceId ?? "" })
+  const pendingApplications = (applicationsQuery.data ?? []).filter(
+    (item) => item.status === "pending"
+  )
+
+  return (
+    <>
+      <PageHeading section="overview" />
+      <OverviewPage
+        dashboard={dashboard}
+        devices={devices}
+        relays={relays}
+        applications={pendingApplications}
+        isAdmin={isAdmin}
+        isLoading={dashboardQuery.isLoading}
+        locale={locale}
+        t={t}
+        onOpenEditor={openEditor}
+        onOpenApplications={() => onNavigate("requests")}
+        onSync={() => syncMutation.mutate()}
+        syncPending={syncMutation.isPending}
+      />
+
+      <Toast message={toast} />
+    </>
   )
 }

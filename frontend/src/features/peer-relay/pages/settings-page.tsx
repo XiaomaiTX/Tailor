@@ -1,11 +1,23 @@
-import { useEffect, useState, type FormEvent } from "react"
-import { Check, ShieldCheck, TriangleAlert } from "lucide-react"
-
-import type {
-  PeerRelaySettings,
-  PeerRelaySettingsInput,
-} from "@/api/generated/model"
+import type { PeerRelaySettingsInput } from "@/api/generated/model"
+import { peerRelayApi } from "@/api/peer-relay"
 import { Button } from "@/components/ui/button"
+import { errorMessage } from "@/features/peer-relay/utils"
+import { useI18n } from "@/i18n"
+import { cn } from "@/lib/utils"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Check, TriangleAlert } from "lucide-react"
+import { useEffect, useState } from "react"
+
+import {
+  PageHeading,
+  Toast,
+} from "@/features/peer-relay/components/page-heading"
+import { queryKeys, useDashboard } from "@/features/peer-relay/queries"
+import { useToast } from "@/features/peer-relay/use-toast"
+import { ShieldCheck } from "lucide-react"
+import { type FormEvent } from "react"
+
+import type { PeerRelaySettings } from "@/api/generated/model"
 import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -16,12 +28,7 @@ import {
   Notice,
   OptionSelect,
 } from "@/features/peer-relay/components/view-primitives"
-import {
-  errorMessage,
-  formatDate,
-  parseGroupList,
-} from "@/features/peer-relay/utils"
-import { cn } from "@/lib/utils"
+import { formatDate, parseGroupList } from "@/features/peer-relay/utils"
 
 export function SettingsPage({
   settings,
@@ -382,5 +389,49 @@ function SettingStatus({
         {value}
       </p>
     </div>
+  )
+}
+
+export function SettingsRoute() {
+  const { t, locale } = useI18n()
+  const queryClient = useQueryClient()
+  const isAdmin = useDashboard().data?.currentUser.isAdmin ?? false
+  const { toast, setToast } = useToast()
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: peerRelayApi.settings,
+    enabled: Boolean(isAdmin),
+  })
+  const settingsMutation = useMutation({
+    mutationFn: (input: PeerRelaySettingsInput) =>
+      peerRelayApi.saveSettings(input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.devices }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.relays }),
+      ])
+      setToast(t("relay.settings.saved"))
+    },
+  })
+
+  return (
+    <>
+      <PageHeading section="settings" />
+      <SettingsPage
+        key={`${settingsQuery.data?.updatedBy ?? "loading"}:${settingsQuery.data?.updatedAt ?? ""}`}
+        settings={settingsQuery.data}
+        isLoading={settingsQuery.isLoading}
+        error={settingsQuery.error}
+        isPending={settingsMutation.isPending}
+        saveError={settingsMutation.error}
+        locale={locale}
+        t={t}
+        onSave={(input) => settingsMutation.mutate(input)}
+      />
+
+      <Toast message={toast} />
+    </>
   )
 }

@@ -2,7 +2,7 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - backend/internal/
   - frontend/src/
@@ -39,10 +39,10 @@ Maps Tailor's modules and their dependency boundaries. Layering rules are in `do
 
 | Module                  | Entry                                                     | Responsibility                                                                            | Dependencies                                                    |
 | ----------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `App`                   | `frontend/src/App.tsx`                                    | SPA entry that delegates to the Peer Relay console                                        | React Router, feature entry                                     |
-| `app/router`             | `frontend/src/app/router.tsx`                             | Browser route assembly for console pages, login, and not found                            | React Router, app and feature route components                 |
-| `peer-relay console`    | `frontend/src/features/peer-relay/peer-relay-console.tsx` | Query and mutation orchestration, permission-filtered navigation, shared page shell       | React Router, React Query, i18n, feature pages, API wrapper     |
-| `peer-relay pages`      | `frontend/src/features/peer-relay/pages/`                 | Overview, graph editor, relay directory, applications, policy history, and settings views | Generated models, feature view components, shared UI primitives |
+| `App`                   | `frontend/src/App.tsx`                                    | Sidebar, shared header, session status, and Outlet layout   | React Router, React Query, shared components                                        |
+| `app/router`             | `frontend/src/app/router.tsx`                             | Browser route assembly, active-page adaptation, navigation, and access/login redirects | React Router, API wrapper, App layout, feature pages |
+| `peer-relay queries` | `frontend/src/features/peer-relay/queries.ts` | Shared cached queries and invalidation helpers | React Query, API wrapper |
+| `peer-relay pages`      | `frontend/src/features/peer-relay/pages/`                 | Page content, queries, mutations, and dialogs for each route | Generated models, feature view components, shared UI primitives |
 | `peer-relay components` | `frontend/src/features/peer-relay/components/`            | Application and review dialogs plus Peer Relay display primitives                         | React Aria, shadcn aria-sera UI primitives, feature types       |
 | `api/peer-relay`        | `frontend/src/api/peer-relay.ts`                          | Typed domain-oriented calls around generated client                                       | generated client/models                                         |
 | `api/generated`         | `frontend/src/api/generated/`                             | Orval client, React Query hooks, schemas                                                  | OpenAPI, shared fetch                                           |
@@ -62,6 +62,7 @@ Maps Tailor's modules and their dependency boundaries. Layering rules are in `do
 ## Boundaries
 
 - Backend flow: `handler -> service -> repository -> model`; Headscale and policy parsing are service adapters.
-- Frontend flow: `router -> App/feature console -> routed page/component -> API wrapper -> generated client -> HTTP transport`.
+- Frontend flow: `router -> App layout / routed page -> component -> API wrapper -> generated client -> HTTP transport`.
+- Browser paths, route matching, access redirects, and navigation targets belong to `frontend/src/app/`; App receives the active page and navigation callbacks; pages own their content and actions.
 - Only generated folders are written by generators.
 - Keep the backend on a private network and use HTTPS for deployed browser traffic and OIDC callbacks.

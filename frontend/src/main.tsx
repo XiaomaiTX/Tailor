@@ -1,26 +1,27 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query"
 import { RouterProvider } from "react-router-dom"
 
 import { ApiProblemError } from "@/api/http"
-import { router } from "@/app/router"
+import { router, handleRouteError } from "@/app/router"
 import { ThemeProvider } from "@/components/theme-provider"
 import { I18nProvider } from "@/i18n"
 import "./index.css"
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
-    onError: (error) => {
-      if (error instanceof ApiProblemError && error.problem.status === 401 && window.location.pathname !== "/login") {
-        window.location.assign("/login")
-      }
-    },
+    onError: (error) => handleRouteError(error),
   }),
   defaultOptions: {
     queries: {
       retry: (failureCount, error) =>
-        !(error instanceof ApiProblemError && error.problem.status === 401) && failureCount < 1,
+        !(error instanceof ApiProblemError && error.problem.status === 401) &&
+        failureCount < 1,
     },
   },
 })

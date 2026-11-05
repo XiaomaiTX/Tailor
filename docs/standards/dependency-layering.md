@@ -2,7 +2,7 @@
 status: active
 doc_type: standard
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-05
 source_of_truth:
   - docs/ai/repo-rules.md
   - docs/architecture/module-map.md
@@ -20,6 +20,12 @@ source_of_truth:
 - 上层可以依赖下层抽象，下层不能直接依赖上层实现
 - 边界处的转换、适配、序列化应集中在边界层
 - OpenAPI 是跨端契约单一来源；生成的代码不可手改
+
+## Frontend Browser Routing
+
+- `frontend/src/app/router.tsx` owns browser route definitions and URL paths. `frontend/src/App.tsx` composes the sidebar, shared header, and `Outlet`. Active-page matching, navigation callbacks, and query-error login redirects also belong to `app/router.tsx`.
+- Routes mount the feature page modules directly. Each page owns its queries, mutations, dialogs, and content; shared query helpers contain no page selection or rendering. App receives active-page and navigation callbacks from the route layer. Route access redirects belong to the app route layer.
+- A page may use React Router's navigation blocker for page-specific unsaved-change behavior, but it must not take over route assembly or page matching.
 
 ## Web Full-Stack 当前结构
 

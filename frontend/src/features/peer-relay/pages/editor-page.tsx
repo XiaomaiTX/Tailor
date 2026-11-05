@@ -1,12 +1,32 @@
+import type { BatchAssignmentInput } from "@/api/generated/model"
+import { peerRelayApi } from "@/api/peer-relay"
+import { Button } from "@/components/ui/button"
+import { errorMessage } from "@/features/peer-relay/utils"
+import { useI18n } from "@/i18n"
+import { cn } from "@/lib/utils"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react"
+  Check,
+  Plus,
+  RadioTower,
+  SlidersHorizontal,
+  TriangleAlert,
+} from "lucide-react"
+import { useEffect, useState } from "react"
+
+import type { CanvasEdge, CanvasGraph, CanvasNode } from "@/api/generated/model"
+import { Input } from "@/components/ui/input"
+import {
+  PageHeading,
+  Toast,
+} from "@/features/peer-relay/components/page-heading"
+import {
+  EmptyState,
+  LoadingState,
+  Notice,
+} from "@/features/peer-relay/components/view-primitives"
+import { queryKeys, useDashboard } from "@/features/peer-relay/queries"
+import { useToast } from "@/features/peer-relay/use-toast"
 import {
   applyNodeChanges,
   Background,
@@ -26,36 +46,10 @@ import {
   type NodeProps,
   type Viewport,
 } from "@xyflow/react"
-import { useBlocker } from "react-router-dom"
 import "@xyflow/react/dist/style.css"
-import {
-  Check,
-  GitFork,
-  LockKeyhole,
-  Plus,
-  RadioTower,
-  Search,
-  Server,
-  SlidersHorizontal,
-  TriangleAlert,
-  X,
-} from "lucide-react"
-import type {
-  BatchAssignmentInput,
-  CanvasEdge,
-  CanvasGraph,
-  CanvasNode,
-} from "@/api/generated/model"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  EmptyState,
-  LoadingState,
-  Notice,
-} from "@/features/peer-relay/components/view-primitives"
-import { errorMessage } from "@/features/peer-relay/utils"
-import { useI18n } from "@/i18n"
-import { cn } from "@/lib/utils"
+import { GitFork, LockKeyhole, Search, Server, X } from "lucide-react"
+import { memo, useCallback, useLayoutEffect, useMemo, useRef } from "react"
+import { useBlocker, useLocation } from "react-router-dom"
 
 const layoutVersion = 2
 const gridWidth = 320
@@ -1570,5 +1564,62 @@ export function EditorPage(props: {
     <ReactFlowProvider>
       <AuthorizationCanvas {...props} />
     </ReactFlowProvider>
+  )
+}
+
+export function EditorRoute() {
+  const { t } = useI18n()
+  const queryClient = useQueryClient()
+  const currentUser = useDashboard().data?.currentUser
+  const { toast, setToast } = useToast()
+  const [canvasSaveResetKey, setCanvasSaveResetKey] = useState(0)
+  const canvasGraphQuery = useQuery({
+    queryKey: queryKeys.canvasGraph,
+    queryFn: peerRelayApi.canvasGraph,
+    enabled: Boolean(currentUser),
+  })
+  const canvasSaveMutation = useMutation({
+    mutationFn: (input: BatchAssignmentInput) =>
+      peerRelayApi.saveAssignmentsBatch(input),
+    onSuccess: async () => {
+      setCanvasSaveResetKey((current) => current + 1)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.audits }),
+      ])
+      setToast(t("relay.editor.saved"))
+    },
+    onError: async () => {
+      // A stale-policy conflict should refresh the comparison baseline while
+      // the canvas keeps its in-memory draft for review.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph })
+    },
+  })
+
+  const location = useLocation()
+  const initialCanvasNodeID =
+    (location.state as { nodeID?: string } | null)?.nodeID ?? ""
+
+  return (
+    <>
+      <PageHeading section="editor" />
+      <EditorPage
+        key={currentUser?.username ?? ""}
+        graph={canvasGraphQuery.data}
+        username={currentUser?.username ?? ""}
+        initialNodeID={initialCanvasNodeID}
+        isLoading={canvasGraphQuery.isLoading}
+        loadError={canvasGraphQuery.error}
+        savePending={canvasSaveMutation.isPending}
+        saveError={canvasSaveMutation.error}
+        resetKey={canvasSaveResetKey}
+        t={t}
+        onReload={() => canvasGraphQuery.refetch()}
+        onSave={(input) => canvasSaveMutation.mutate(input)}
+      />
+
+      <Toast message={toast} />
+    </>
   )
 }

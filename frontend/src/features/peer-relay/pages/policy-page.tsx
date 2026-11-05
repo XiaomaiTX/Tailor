@@ -1,24 +1,38 @@
-import { useState } from "react"
-import { Activity, Clock3, GitBranch, Plus, Trash2 } from "lucide-react"
 import type {
   Device,
   ManagedPolicySelectorRule,
   PolicyRevision,
-  PolicyRevisionDetail,
   PolicySelectorRuleInput,
   PolicySelectorRulePreview,
-  PolicySelectorRulePreviewInput,
   Relay,
 } from "@/api/generated/model"
+import { peerRelayApi } from "@/api/peer-relay"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/features/peer-relay/components/dialogs"
+import { useI18n } from "@/i18n"
+import { cn } from "@/lib/utils"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { Activity, GitBranch, Plus } from "lucide-react"
+import { useState } from "react"
+
+import type {
+  PolicyRevisionDetail,
+  PolicySelectorRulePreviewInput,
+} from "@/api/generated/model"
 import { Input } from "@/components/ui/input"
+import {
+  PageHeading,
+  Toast,
+} from "@/features/peer-relay/components/page-heading"
 import {
   EmptyState,
   HashChip,
   LoadingState,
 } from "@/features/peer-relay/components/view-primitives"
+import { queryKeys, usePeerRelayData } from "@/features/peer-relay/queries"
+import { useToast } from "@/features/peer-relay/use-toast"
 import { formatDate } from "@/features/peer-relay/utils"
-import { cn } from "@/lib/utils"
+import { Clock3, Trash2 } from "lucide-react"
 
 export function PolicyPage({
   revisions,
@@ -109,7 +123,10 @@ export function PolicyPage({
         </div>
         <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="space-y-4">
-            <label className="block text-[10px] font-bold tracking-widest text-muted-foreground" htmlFor="policy-selector-source">
+            <label
+              className="block text-[10px] font-bold tracking-widest text-muted-foreground"
+              htmlFor="policy-selector-source"
+            >
               {t("relay.policy.sourceSelector")}
               <Input
                 id="policy-selector-source"
@@ -120,7 +137,10 @@ export function PolicyPage({
                 className="mt-2"
               />
             </label>
-            <label className="block text-[10px] font-bold tracking-widest text-muted-foreground" htmlFor="policy-selector-relay">
+            <label
+              className="block text-[10px] font-bold tracking-widest text-muted-foreground"
+              htmlFor="policy-selector-relay"
+            >
               {t("relay.policy.targetRelay")}
               <select
                 id="policy-selector-relay"
@@ -147,11 +167,23 @@ export function PolicyPage({
               <Button
                 variant="outline"
                 size="sm"
-                isDisabled={!sourceSelector.trim() || !relayNodeId || selectorPreviewPending || selectorMutationPending}
-                onPress={() => onPreviewSelectorRule({ sourceSelector: sourceSelector.trim(), relayNodeId })}
+                isDisabled={
+                  !sourceSelector.trim() ||
+                  !relayNodeId ||
+                  selectorPreviewPending ||
+                  selectorMutationPending
+                }
+                onPress={() =>
+                  onPreviewSelectorRule({
+                    sourceSelector: sourceSelector.trim(),
+                    relayNodeId,
+                  })
+                }
               >
                 <Activity />
-                {selectorPreviewPending ? t("relay.policy.previewingScope") : t("relay.policy.previewScope")}
+                {selectorPreviewPending
+                  ? t("relay.policy.previewingScope")
+                  : t("relay.policy.previewScope")}
               </Button>
               {previewIsCurrent && selectorPreview ? (
                 <Button
@@ -167,28 +199,40 @@ export function PolicyPage({
                   }
                 >
                   <Plus />
-                  {selectorMutationPending ? t("relay.policy.savingSelectorRule") : t("relay.policy.createSelectorRule")}
+                  {selectorMutationPending
+                    ? t("relay.policy.savingSelectorRule")
+                    : t("relay.policy.createSelectorRule")}
                 </Button>
               ) : null}
             </div>
             {!policyWritesEnabled ? (
-              <p className="text-[10px] text-muted-foreground">{t("relay.editor.writesDisabled")}</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("relay.editor.writesDisabled")}
+              </p>
             ) : null}
-            {selectorPreviewPending && !selectorPreview ? <LoadingState t={t} /> : null}
+            {selectorPreviewPending && !selectorPreview ? (
+              <LoadingState t={t} />
+            ) : null}
             {selectorPreview && previewIsCurrent ? (
               <div className="border border-border p-3">
                 <p className="text-xs font-semibold">
-                  {selectorPreview.sourceSelector} → {selectorPreview.relay.displayName}
+                  {selectorPreview.sourceSelector} →{" "}
+                  {selectorPreview.relay.displayName}
                 </p>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  {selectorPreview.relaySelector} · {t("relay.policy.currentMatches")}{selectorPreview.sourceDevices.length}
+                  {selectorPreview.relaySelector} ·{" "}
+                  {t("relay.policy.currentMatches")}
+                  {selectorPreview.sourceDevices.length}
                 </p>
-                <p className="mt-2 text-[10px] leading-4 text-muted-foreground">{selectorPreview.warning}</p>
+                <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                  {selectorPreview.warning}
+                </p>
                 {selectorPreview.sourceDevices.length ? (
                   <ul className="mt-2 max-h-36 space-y-1 overflow-auto text-[10px] text-muted-foreground">
                     {selectorPreview.sourceDevices.map((device) => (
                       <li key={device.nodeId} className="truncate">
-                        {device.givenName || device.hostname} · {device.username} · {device.ipv4 || device.ipv6}
+                        {device.givenName || device.hostname} ·{" "}
+                        {device.username} · {device.ipv4 || device.ipv6}
                       </li>
                     ))}
                   </ul>
@@ -209,18 +253,26 @@ export function PolicyPage({
             ) : selectorRulesLoading ? (
               <LoadingState t={t} />
             ) : selectorRules.length === 0 ? (
-              <EmptyState title={t("relay.policy.noSelectorRules")} icon={GitBranch} />
+              <EmptyState
+                title={t("relay.policy.noSelectorRules")}
+                icon={GitBranch}
+              />
             ) : (
               selectorRules.map((rule) => (
                 <div key={rule.id} className="border border-border p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-xs font-semibold">
-                        {rule.sourceSelector} → {rule.relay?.displayName ?? rule.relaySelector}
+                        {rule.sourceSelector} →{" "}
+                        {rule.relay?.displayName ?? rule.relaySelector}
                       </p>
                       <p className="mt-1 text-[10px] text-muted-foreground">
-                        {rule.relaySelector} · {t("relay.policy.currentMatches")}{rule.sourceDevices.length}
-                        {rule.targetChanged ? ` · ${t("relay.policy.targetChanged")}` : ""}
+                        {rule.relaySelector} ·{" "}
+                        {t("relay.policy.currentMatches")}
+                        {rule.sourceDevices.length}
+                        {rule.targetChanged
+                          ? ` · ${t("relay.policy.targetChanged")}`
+                          : ""}
                       </p>
                     </div>
                     <Button
@@ -234,11 +286,15 @@ export function PolicyPage({
                     </Button>
                   </div>
                   {rule.warning ? (
-                    <p className="mt-2 text-[10px] leading-4 text-muted-foreground">{rule.warning}</p>
+                    <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                      {rule.warning}
+                    </p>
                   ) : null}
                   {rule.sourceDevices.length ? (
                     <p className="mt-2 truncate text-[10px] text-muted-foreground">
-                      {rule.sourceDevices.map((device) => device.givenName || device.hostname).join(" · ")}
+                      {rule.sourceDevices
+                        .map((device) => device.givenName || device.hostname)
+                        .join(" · ")}
                     </p>
                   ) : null}
                 </div>
@@ -498,5 +554,167 @@ export function PolicyPage({
         </section>
       </div>
     </div>
+  )
+}
+
+export function PolicyRoute() {
+  const { t, locale } = useI18n()
+  const { queryClient, dashboard, isAdmin, devices, relays, refreshAll } =
+    usePeerRelayData()
+  const { toast, setToast } = useToast()
+  const [rollbackTarget, setRollbackTarget] = useState<PolicyRevision | null>(
+    null
+  )
+  const [revisionDetailId, setRevisionDetailId] = useState("")
+  const [selectorRulePreview, setSelectorRulePreview] =
+    useState<PolicySelectorRulePreview>()
+  const [selectorRuleDeleteTarget, setSelectorRuleDeleteTarget] =
+    useState<ManagedPolicySelectorRule | null>(null)
+
+  const revisionsQuery = useQuery({
+    queryKey: queryKeys.revisions,
+    queryFn: peerRelayApi.revisions,
+    enabled: Boolean(isAdmin),
+  })
+  const selectorRulesQuery = useQuery({
+    queryKey: queryKeys.selectorRules,
+    queryFn: peerRelayApi.selectorRules,
+    enabled: Boolean(isAdmin),
+  })
+  const revisionDetailQuery = useQuery({
+    queryKey: [...queryKeys.revisions, "detail", revisionDetailId],
+    queryFn: () => peerRelayApi.revisionDetail(revisionDetailId),
+    enabled: Boolean(isAdmin && revisionDetailId),
+  })
+  const auditsQuery = useQuery({
+    queryKey: queryKeys.audits,
+    queryFn: peerRelayApi.audits,
+    enabled: Boolean(isAdmin),
+  })
+  const rollbackMutation = useMutation({
+    mutationFn: peerRelayApi.rollback,
+    onSuccess: async () => {
+      setRollbackTarget(null)
+      await refreshAll()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.revisions }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.audits }),
+      ])
+    },
+  })
+
+  const selectorRulePreviewMutation = useMutation({
+    mutationFn: peerRelayApi.previewSelectorRule,
+    onSuccess: (result) => setSelectorRulePreview(result),
+  })
+
+  const refreshPolicyManagement = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorRules }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.revisions }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.audits }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+    ])
+  }
+
+  const createSelectorRuleMutation = useMutation({
+    mutationFn: (input: PolicySelectorRuleInput) =>
+      peerRelayApi.createSelectorRule(input),
+    onSuccess: async () => {
+      setSelectorRulePreview(undefined)
+      await refreshPolicyManagement()
+      setToast(t("relay.policy.selectorRuleSaved"))
+    },
+  })
+
+  const deleteSelectorRuleMutation = useMutation({
+    mutationFn: ({
+      id,
+      basePolicyHash,
+    }: {
+      id: string
+      basePolicyHash: string
+    }) => peerRelayApi.deleteSelectorRule(id, basePolicyHash),
+    onSuccess: async () => {
+      setSelectorRuleDeleteTarget(null)
+      await refreshPolicyManagement()
+      setToast(t("relay.policy.selectorRuleRemoved"))
+    },
+  })
+
+  return (
+    <>
+      <PageHeading section="policy" />
+      <PolicyPage
+        revisions={revisionsQuery.data ?? []}
+        revisionDetail={revisionDetailQuery.data}
+        revisionDetailLoading={revisionDetailQuery.isLoading}
+        revisionDetailError={revisionDetailQuery.error}
+        devices={devices}
+        relays={relays}
+        audits={auditsQuery.data ?? []}
+        selectorRules={selectorRulesQuery.data ?? []}
+        selectorRulesLoading={selectorRulesQuery.isLoading}
+        selectorRulesError={selectorRulesQuery.error}
+        selectorPreview={selectorRulePreview}
+        selectorPreviewPending={selectorRulePreviewMutation.isPending}
+        selectorMutationPending={
+          createSelectorRuleMutation.isPending ||
+          deleteSelectorRuleMutation.isPending
+        }
+        selectorMutationError={
+          createSelectorRuleMutation.error ??
+          deleteSelectorRuleMutation.error ??
+          selectorRulePreviewMutation.error
+        }
+        policyWritesEnabled={dashboard?.policyWritesEnabled ?? false}
+        isLoading={revisionsQuery.isLoading || auditsQuery.isLoading}
+        t={t}
+        locale={locale}
+        onRollback={setRollbackTarget}
+        onViewRevision={(revision) => setRevisionDetailId(revision.id)}
+        onPreviewSelectorRule={(input) => {
+          setSelectorRulePreview(undefined)
+          selectorRulePreviewMutation.mutate(input)
+        }}
+        onCreateSelectorRule={(input) =>
+          createSelectorRuleMutation.mutate(input)
+        }
+        onDeleteSelectorRule={setSelectorRuleDeleteTarget}
+      />
+      {rollbackTarget ? (
+        <ConfirmDialog
+          title={t("relay.policy.confirm")}
+          description={rollbackTarget.summary}
+          confirmLabel={t("relay.policy.confirm")}
+          cancelLabel={t("relay.policy.cancel")}
+          isPending={rollbackMutation.isPending}
+          error={rollbackMutation.error}
+          onCancel={() => setRollbackTarget(null)}
+          onConfirm={() => rollbackMutation.mutate(rollbackTarget.id)}
+        />
+      ) : null}
+
+      {selectorRuleDeleteTarget ? (
+        <ConfirmDialog
+          title={t("relay.policy.removeSelectorRule")}
+          description={`${selectorRuleDeleteTarget.sourceSelector} → ${selectorRuleDeleteTarget.relaySelector}`}
+          confirmLabel={t("relay.policy.removeSelectorRule")}
+          cancelLabel={t("relay.policy.cancel")}
+          isPending={deleteSelectorRuleMutation.isPending}
+          error={deleteSelectorRuleMutation.error}
+          onCancel={() => setSelectorRuleDeleteTarget(null)}
+          onConfirm={() =>
+            deleteSelectorRuleMutation.mutate({
+              id: selectorRuleDeleteTarget.id,
+              basePolicyHash: dashboard?.policyHash ?? "",
+            })
+          }
+        />
+      ) : null}
+
+      <Toast message={toast} />
+    </>
   )
 }

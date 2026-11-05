@@ -1,18 +1,24 @@
-import { useState } from "react"
-import {
-  Activity,
-  CircleHelp,
-  Globe2,
-  MapPin,
-  Network,
-  Pencil,
-  RadioTower,
-  Search,
-} from "lucide-react"
-import type { Relay } from "@/api/generated/model"
+import type { Relay, RelayUpdate } from "@/api/generated/model"
+import { peerRelayApi } from "@/api/peer-relay"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  ApplicationDialog,
+  ConfirmDialog,
+  RelayRegistrationDialog,
+} from "@/features/peer-relay/components/dialogs"
+import { relayUpdateInput } from "@/features/peer-relay/utils"
+import { useI18n } from "@/i18n"
+import { cn } from "@/lib/utils"
+import { useMutation } from "@tanstack/react-query"
+import { Activity, Plus, RadioTower } from "lucide-react"
+import { useState } from "react"
+
 import { Input } from "@/components/ui/input"
+import {
+  PageHeading,
+  Toast,
+} from "@/features/peer-relay/components/page-heading"
 import {
   Detail,
   EmptyState,
@@ -20,7 +26,16 @@ import {
   OptionSelect,
   Pagination,
 } from "@/features/peer-relay/components/view-primitives"
-import { cn } from "@/lib/utils"
+import { queryKeys, usePeerRelayData } from "@/features/peer-relay/queries"
+import { useToast } from "@/features/peer-relay/use-toast"
+import {
+  CircleHelp,
+  Globe2,
+  MapPin,
+  Network,
+  Pencil,
+  Search,
+} from "lucide-react"
 
 export function RelaysPage({
   relays,
@@ -226,5 +241,174 @@ export function RelaysPage({
         />
       ) : null}
     </div>
+  )
+}
+
+export function RelaysRoute() {
+  const { t } = useI18n()
+  const {
+    queryClient,
+    currentUser,
+    canApply,
+    canManageRelays,
+    devices,
+    relaysQuery,
+    relays,
+    refreshAll,
+  } = usePeerRelayData()
+  const { toast, setToast } = useToast()
+  const [applicationOpen, setApplicationOpen] = useState(false)
+  const [relayFormOpen, setRelayFormOpen] = useState(false)
+  const [relayEditTarget, setRelayEditTarget] = useState<Relay | null>(null)
+  const [relayCancelTarget, setRelayCancelTarget] = useState<Relay | null>(null)
+  const applicationMutation = useMutation({
+    mutationFn: peerRelayApi.apply,
+    onSuccess: async () => {
+      setApplicationOpen(false)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.applications }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+      ])
+      setToast(t("relay.applications.submitted"))
+    },
+  })
+
+  const relayRegistrationMutation = useMutation({
+    mutationFn: peerRelayApi.register,
+    onSuccess: async () => {
+      setRelayFormOpen(false)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.relays }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+      ])
+    },
+  })
+
+  const relayUpdateMutation = useMutation({
+    mutationFn: ({ nodeId, input }: { nodeId: string; input: RelayUpdate }) =>
+      peerRelayApi.updateRelay(nodeId, input),
+    onSuccess: async () => {
+      setRelayEditTarget(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.relays }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+      ])
+    },
+  })
+
+  const relayCancelMutation = useMutation({
+    mutationFn: peerRelayApi.cancelRelay,
+    onSuccess: async () => {
+      setRelayCancelTarget(null)
+      await refreshAll()
+    },
+  })
+
+  return (
+    <>
+      <PageHeading section="relays">
+        {canManageRelays ? (
+          <Button
+            className="flex items-center justify-center gap-2 px-4"
+            onPress={() => setRelayFormOpen(true)}
+          >
+            <Plus size={15} /> {t("relay.relays.add")}
+          </Button>
+        ) : canApply ? (
+          <Button
+            className="flex items-center justify-center gap-2 px-4"
+            onPress={() => setApplicationOpen(true)}
+          >
+            <Plus size={15} /> {t("relay.relays.apply")}
+          </Button>
+        ) : null}
+      </PageHeading>
+      <RelaysPage
+        relays={relays}
+        canManageRelays={canManageRelays}
+        isLoading={relaysQuery.isLoading}
+        t={t}
+        onToggle={(relay) =>
+          relayUpdateMutation.mutate({
+            nodeId: relay.nodeId,
+            input: relayUpdateInput(relay, !relay.selectable),
+          })
+        }
+        onEdit={setRelayEditTarget}
+        onCancel={setRelayCancelTarget}
+      />
+      {applicationOpen ? (
+        <ApplicationDialog
+          devices={devices.filter(
+            (device) =>
+              device.username.toLocaleLowerCase() ===
+                currentUser?.username?.toLocaleLowerCase() &&
+              device.tags.length === 0 &&
+              !device.missing
+          )}
+          t={t}
+          isPending={applicationMutation.isPending}
+          error={applicationMutation.error}
+          onClose={() => setApplicationOpen(false)}
+          onSubmit={(input) => applicationMutation.mutate(input)}
+        />
+      ) : null}
+
+      {(relayFormOpen || relayEditTarget) && canManageRelays ? (
+        <RelayRegistrationDialog
+          key={relayEditTarget?.nodeId ?? "new-relay"}
+          devices={
+            relayEditTarget
+              ? []
+              : devices.filter(
+                  (device) =>
+                    !device.missing &&
+                    !relays.some((relay) => relay.nodeId === device.nodeId)
+                )
+          }
+          relay={relayEditTarget ?? undefined}
+          t={t}
+          isPending={
+            relayEditTarget
+              ? relayUpdateMutation.isPending
+              : relayRegistrationMutation.isPending
+          }
+          error={
+            relayEditTarget
+              ? relayUpdateMutation.error
+              : relayRegistrationMutation.error
+          }
+          onClose={() => {
+            setRelayFormOpen(false)
+            setRelayEditTarget(null)
+          }}
+          onSubmit={(input) => {
+            if ("nodeId" in input) {
+              relayRegistrationMutation.mutate(input)
+            } else if (relayEditTarget) {
+              relayUpdateMutation.mutate({
+                nodeId: relayEditTarget.nodeId,
+                input,
+              })
+            }
+          }}
+        />
+      ) : null}
+
+      {relayCancelTarget ? (
+        <ConfirmDialog
+          title={t("relay.relays.cancelRegistration")}
+          description={t("relay.relays.cancelConfirm")}
+          confirmLabel={t("relay.relays.cancelRegistration")}
+          cancelLabel={t("relay.common.cancel")}
+          isPending={relayCancelMutation.isPending}
+          error={relayCancelMutation.error}
+          onCancel={() => setRelayCancelTarget(null)}
+          onConfirm={() => relayCancelMutation.mutate(relayCancelTarget.nodeId)}
+        />
+      ) : null}
+
+      <Toast message={toast} />
+    </>
   )
 }
