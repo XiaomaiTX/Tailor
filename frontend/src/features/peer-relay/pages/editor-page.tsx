@@ -76,6 +76,7 @@ type RelationData = {
   sourceNodeId: string
   relayNodeId: string
   warning?: string
+  grantMatches?: CanvasEdge["grantMatches"]
 }
 type DeviceFlowEdge = Edge<RelationData>
 type StoredLayout = {
@@ -755,6 +756,7 @@ function AuthorizationCanvas({
           sourceNodeId: edge.sourceNodeId,
           relayNodeId: edge.relayNodeId,
           warning: edge.warning,
+          grantMatches: edge.grantMatches,
         },
         deletable: edge.editable && !loadError,
         selectable: edge.editable && !loadError,
@@ -1360,6 +1362,15 @@ function AuthorizationCanvas({
                                 ? ` · ${edge.data.warning}`
                                 : ""}
                             </p>
+                            {edge.data?.grantMatches?.map((match, index) => (
+                              <p
+                                key={`${match.grantId}-${index}`}
+                                className="mt-1 truncate text-[9px] text-muted-foreground/80"
+                                title={`${match.grantId}: ${match.src.join(", ")} → ${match.dst.join(", ")}`}
+                              >
+                                {`${match.matchedSrc.join(", ")} → ${match.matchedDst.join(", ")} · ${match.grantId}`}
+                              </p>
+                            ))}
                           </div>
                           {isOutgoing && edge.data?.editable ? (
                             <Button

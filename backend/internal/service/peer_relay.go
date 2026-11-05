@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -129,11 +131,12 @@ type RelayInput struct {
 }
 
 type AssignmentView struct {
-	RelayNodeID string    `json:"relayNodeId"`
-	Relay       RelayView `json:"relay"`
-	Source      string    `json:"source"`
-	Editable    bool      `json:"editable"`
-	Warning     string    `json:"warning,omitempty"`
+	RelayNodeID  string              `json:"relayNodeId"`
+	Relay        RelayView           `json:"relay"`
+	Source       string              `json:"source"`
+	Editable     bool                `json:"editable"`
+	Warning      string              `json:"warning,omitempty"`
+	GrantMatches []policy.GrantMatch `json:"grantMatches,omitempty"`
 }
 
 type GraphView struct {
@@ -153,11 +156,12 @@ type CanvasNodeView struct {
 }
 
 type CanvasEdgeView struct {
-	SourceNodeID string `json:"sourceNodeId"`
-	RelayNodeID  string `json:"relayNodeId"`
-	Source       string `json:"source"`
-	Editable     bool   `json:"editable"`
-	Warning      string `json:"warning,omitempty"`
+	SourceNodeID string              `json:"sourceNodeId"`
+	RelayNodeID  string              `json:"relayNodeId"`
+	Source       string              `json:"source"`
+	Editable     bool                `json:"editable"`
+	Warning      string              `json:"warning,omitempty"`
+	GrantMatches []policy.GrantMatch `json:"grantMatches,omitempty"`
 }
 
 type CanvasGraphView struct {
@@ -211,6 +215,54 @@ type BatchAssignmentResult struct {
 	Removed            int      `json:"removed"`
 	PolicyChanged      bool     `json:"policyChanged"`
 	SourceNodeIDs      []string `json:"sourceNodeIds"`
+}
+
+type SelectorRulePreviewInput struct {
+	SourceSelector string `json:"sourceSelector"`
+	RelayNodeID    string `json:"relayNodeId"`
+}
+
+type SelectorRuleInput struct {
+	SourceSelector string `json:"sourceSelector"`
+	RelayNodeID    string `json:"relayNodeId"`
+	BasePolicyHash string `json:"basePolicyHash"`
+	ScopeHash      string `json:"scopeHash"`
+}
+
+type SelectorRulePreview struct {
+	SourceSelector string       `json:"sourceSelector"`
+	RelayNodeID    string       `json:"relayNodeId"`
+	RelaySelector  string       `json:"relaySelector"`
+	Relay          RelayView    `json:"relay"`
+	SourceDevices  []DeviceView `json:"sourceDevices"`
+	BasePolicyHash string       `json:"basePolicyHash"`
+	ScopeHash      string       `json:"scopeHash"`
+	Dynamic        bool         `json:"dynamic"`
+	Warning        string       `json:"warning,omitempty"`
+}
+
+type SelectorRuleView struct {
+	ID             string       `json:"id"`
+	SourceSelector string       `json:"sourceSelector"`
+	RelayNodeID    string       `json:"relayNodeId"`
+	RelaySelector  string       `json:"relaySelector"`
+	Relay          *RelayView   `json:"relay,omitempty"`
+	SourceDevices  []DeviceView `json:"sourceDevices"`
+	InPolicy       bool         `json:"inPolicy"`
+	TargetChanged  bool         `json:"targetChanged"`
+	ReadOnly       bool         `json:"readOnly"`
+	CanDelete      bool         `json:"canDelete"`
+	Warning        string       `json:"warning,omitempty"`
+	CreatedBy      string       `json:"createdBy"`
+	CreatedAt      time.Time    `json:"createdAt"`
+}
+
+type SelectorRuleMutationResult struct {
+	ID             string `json:"id"`
+	SourceSelector string `json:"sourceSelector"`
+	RelayNodeID    string `json:"relayNodeId"`
+	RelaySelector  string `json:"relaySelector"`
+	BasePolicyHash string `json:"basePolicyHash"`
 }
 
 type RevisionView struct {
@@ -807,6 +859,15 @@ func (s *PeerRelayService) CancelRelay(ctx context.Context, username, nodeID str
 			links++
 		}
 	}
+	selectorRules, err := s.repo.SelectorPolicyRules(ctx)
+	if err != nil {
+		return err
+	}
+	for _, rule := range selectorRules {
+		if rule.RelayNodeID == nodeID {
+			links++
+		}
+	}
 	pendingApplications, err := s.repo.Applications(ctx, "pending", "", "")
 	if err != nil {
 		return err
@@ -1068,24 +1129,43 @@ func (s *PeerRelayService) Graph(ctx context.Context, username, sourceNodeID str
 	if stale || readErr != nil {
 		result.CanEdit = false
 	}
-	for _, relay := range relays {
+	relaySelectors := make([]policy.DeviceSelector, len(relays))
+	for i := range relays {
+		relaySelectors[i] = selectorFromView(relays[i].Device)
+	}
+	var relations []policy.RelayRelationState
+	if doc != nil {
+		matrix, matrixErr := doc.EffectiveRelayMatrix([]policy.DeviceSelector{selector(source)}, relaySelectors)
+		if matrixErr != nil {
+			result.CanEdit, result.PolicyStale = false, true
+		} else if len(matrix) > 0 {
+			relations = matrix[0]
+		}
+	}
+	for relayIndex, relay := range relays {
 		assignment, hasAssignment := byRelay[relay.NodeID]
 		kind, warning := "", ""
+		var grantMatches []policy.GrantMatch
 		if doc != nil && !source.Missing && !relay.Device.Missing {
-			exact, inherited, unknown, relationErr := doc.EffectiveRelay(selector(source), selectorFromView(relay.Device))
-			if relationErr != nil {
-				result.CanEdit, result.PolicyStale = false, true
-			}
-			if hasAssignment && assignment.Managed && exact {
-				kind = "platform"
-			} else if exact {
-				kind = "external"
-			} else if inherited {
-				kind = "inherited"
-			} else if unknown {
-				kind, warning = "unknown", "Policy 中存在无法解析的 Peer Relay 选择器"
-			} else if hasAssignment && assignment.Managed {
-				kind, warning = "exception", "平台记录存在，但当前 Policy 中未找到对应授权"
+			if relayIndex < len(relations) {
+				relation := relations[relayIndex]
+				grantMatches = relation.Matches
+				if hasAssignment && assignment.Managed && relation.Exact {
+					kind = "platform"
+				} else if relation.Exact {
+					kind = "external"
+				} else if relation.Inherited {
+					kind = "inherited"
+				} else if relation.Unknown {
+					kind = "unknown"
+				}
+				warning = strings.Join(relation.Warnings, "；")
+				if relation.Unknown && warning == "" {
+					warning = "Policy 中存在无法完整评估的 Peer Relay 选择器"
+				}
+				if kind == "" && hasAssignment && assignment.Managed {
+					kind, warning = "exception", "平台记录存在，但当前 Policy 中未找到对应授权"
+				}
 			}
 		}
 		if kind == "" && hasAssignment && assignment.Managed {
@@ -1098,7 +1178,7 @@ func (s *PeerRelayService) Graph(ctx context.Context, username, sourceNodeID str
 		if !relay.Selectable && kind == "" {
 			editable = false
 		}
-		result.Relays = append(result.Relays, AssignmentView{RelayNodeID: relay.NodeID, Relay: relay, Source: kind, Editable: editable, Warning: warning})
+		result.Relays = append(result.Relays, AssignmentView{RelayNodeID: relay.NodeID, Relay: relay, Source: kind, Editable: editable, Warning: warning, GrantMatches: grantMatches})
 	}
 	sort.Slice(result.Relays, func(i, j int) bool { return result.Relays[i].Relay.DisplayName < result.Relays[j].Relay.DisplayName })
 	return result, nil
@@ -1245,9 +1325,15 @@ func (s *PeerRelayService) CanvasGraph(ctx context.Context, username string) (Ca
 				} else if relation.Inherited {
 					kind = "inherited"
 				} else if relation.Unknown {
-					kind, warning = "unknown", "Policy 中存在无法识别的 Peer Relay 选择器"
+					kind = "unknown"
 				} else if hasAssignment && assignment.Managed {
 					kind, warning = "exception", "平台记录存在，但当前 Policy 中未找到对应授权"
+				}
+				if relation.Unknown && warning == "" {
+					warning = strings.Join(relation.Warnings, "；")
+					if warning == "" {
+						warning = "Policy 中存在无法完整评估的 Peer Relay 选择器"
+					}
 				}
 			} else if hasAssignment && assignment.Managed {
 				kind, warning = "exception", "设备或 Policy 数据不可用，无法确认授权关系"
@@ -1258,6 +1344,7 @@ func (s *PeerRelayService) CanvasGraph(ctx context.Context, username string) (Ca
 			editable := nodesByID[sourceID].CanEdit && (kind == "platform" || kind == "exception") && !policyStale && canConfirm(source) && canConfirm(relayDevice)
 			result.Edges = append(result.Edges, CanvasEdgeView{
 				SourceNodeID: sourceID, RelayNodeID: relayID, Source: kind, Editable: editable, Warning: warning,
+				GrantMatches: relationMatrix[sourceIndex][relayIndex].Matches,
 			})
 		}
 	}
@@ -1891,6 +1978,395 @@ func (s *PeerRelayService) UpdateAssignmentsBatch(ctx context.Context, username 
 	}, nil
 }
 
+func (s *PeerRelayService) PreviewSelectorRule(ctx context.Context, username string, input SelectorRulePreviewInput) (SelectorRulePreview, error) {
+	if strings.TrimSpace(input.SourceSelector) == "" || strings.TrimSpace(input.RelayNodeID) == "" || len(input.RelayNodeID) > 120 {
+		return SelectorRulePreview{}, ErrValidation
+	}
+	if err := s.Sync(ctx); err != nil {
+		return SelectorRulePreview{}, err
+	}
+	doc, _, readErr := s.readPolicy(ctx)
+	if readErr != nil || doc == nil {
+		return SelectorRulePreview{}, fmt.Errorf("%w: 无法读取当前 Headscale Policy", ErrUnavailable)
+	}
+	role, err := s.roles(ctx, username, doc)
+	if err != nil {
+		return SelectorRulePreview{}, err
+	}
+	if !role.isAdmin {
+		return SelectorRulePreview{}, ErrForbidden
+	}
+	return s.selectorRulePreview(ctx, doc, input)
+}
+
+func (s *PeerRelayService) SelectorPolicyRules(ctx context.Context, username string) ([]SelectorRuleView, error) {
+	if err := s.Sync(ctx); err != nil {
+		return nil, err
+	}
+	doc, _, readErr := s.readPolicy(ctx)
+	if readErr != nil || doc == nil {
+		return nil, fmt.Errorf("%w: 无法读取当前 Headscale Policy", ErrUnavailable)
+	}
+	role, err := s.roles(ctx, username, doc)
+	if err != nil {
+		return nil, err
+	}
+	if !role.isAdmin {
+		return nil, ErrForbidden
+	}
+	rules, err := s.repo.SelectorPolicyRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users, err := s.repo.Users(ctx)
+	if err != nil {
+		return nil, err
+	}
+	devices, err := s.repo.Devices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SelectorRuleView, 0, len(rules))
+	for _, rule := range rules {
+		view := SelectorRuleView{
+			ID: rule.ID, SourceSelector: rule.SourceSelector, RelayNodeID: rule.RelayNodeID,
+			RelaySelector: rule.RelaySelector, SourceDevices: []DeviceView{}, CreatedBy: rule.CreatedBy, CreatedAt: rule.CreatedAt,
+		}
+		if err := s.fillSelectorRuleSources(doc, users, devices, rule.SourceSelector, &view.SourceDevices); err != nil {
+			view.ReadOnly = true
+			view.Warning = err.Error()
+		}
+		if count, countErr := countExact(doc.Grants, rule.SourceSelector, rule.RelaySelector); countErr != nil {
+			view.ReadOnly = true
+			appendViewWarning(&view.Warning, "无法安全解析当前 Relay Policy")
+		} else if count == 1 {
+			view.InPolicy = true
+			view.CanDelete = true
+		} else if count == 0 {
+			complexCount, pairErr := countPeerRelaySelectorPair(doc.Grants, rule.SourceSelector, rule.RelaySelector)
+			if pairErr != nil || complexCount > 0 {
+				view.ReadOnly = true
+				appendViewWarning(&view.Warning, "Policy 中的 selector 规则已被改成复杂形式，Tailor 保持只读")
+			} else {
+				view.CanDelete = true
+				appendViewWarning(&view.Warning, "对应授权已不在 Policy 中；移除只会清理 Tailor 的归属记录")
+			}
+		} else {
+			view.ReadOnly = true
+			appendViewWarning(&view.Warning, "同一 selector 授权在 Policy 中重复，无法确定删除对象")
+		}
+		relay, relayErr := s.repo.Relay(ctx, rule.RelayNodeID)
+		if relayErr == nil {
+			device, deviceErr := s.repo.Device(ctx, rule.RelayNodeID)
+			if deviceErr == nil {
+				relayView := RelayView{RelayNode: relay, Device: deviceView(device)}
+				view.Relay = &relayView
+				currentIP, ipErr := selectorIP(selector(device))
+				view.TargetChanged = ipErr != nil || currentIP != rule.RelaySelector
+				if view.TargetChanged {
+					appendViewWarning(&view.Warning, "已注册 Relay 的当前 IP 与该规则目标不同")
+				}
+			} else {
+				view.TargetChanged = true
+				appendViewWarning(&view.Warning, "Relay 设备当前不可用")
+			}
+		} else {
+			view.TargetChanged = true
+			appendViewWarning(&view.Warning, "Relay 注册记录当前不可用")
+		}
+		result = append(result, view)
+	}
+	return result, nil
+}
+
+func (s *PeerRelayService) CreateSelectorRule(ctx context.Context, username string, input SelectorRuleInput) (SelectorRuleMutationResult, error) {
+	if len(input.BasePolicyHash) != 64 || len(input.ScopeHash) != 64 {
+		return SelectorRuleMutationResult{}, ErrValidation
+	}
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+	doc, _, role, err := s.prepareWrite(ctx, username)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	if !role.isAdmin {
+		return SelectorRuleMutationResult{}, ErrForbidden
+	}
+	if !s.cfg.PolicyWrites {
+		return SelectorRuleMutationResult{}, ErrPolicyWrites
+	}
+	if doc.Hash() != input.BasePolicyHash {
+		return SelectorRuleMutationResult{}, fmt.Errorf("%w: Headscale Policy 已更新，请重新预览 selector 规则", ErrConflict)
+	}
+	preview, err := s.selectorRulePreview(ctx, doc, SelectorRulePreviewInput{SourceSelector: input.SourceSelector, RelayNodeID: input.RelayNodeID})
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	if preview.ScopeHash != input.ScopeHash {
+		return SelectorRuleMutationResult{}, fmt.Errorf("%w: 当前命中设备已变化，请重新预览授权范围", ErrConflict)
+	}
+	rules, err := s.repo.SelectorPolicyRules(ctx)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	for _, existing := range rules {
+		if strings.EqualFold(existing.SourceSelector, preview.SourceSelector) && existing.RelaySelector == preview.RelaySelector {
+			return SelectorRuleMutationResult{}, fmt.Errorf("%w: Tailor 已管理相同的 selector 规则", ErrConflict)
+		}
+	}
+	existingCount, err := countPeerRelaySelectorPair(doc.Grants, preview.SourceSelector, preview.RelaySelector)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	if existingCount > 0 {
+		return SelectorRuleMutationResult{}, fmt.Errorf("%w: Policy 中已存在相同 selector 和 Relay 目标，Tailor 不会覆盖或接管该规则", ErrConflict)
+	}
+	grant, err := policy.NewRelayGrant(preview.SourceSelector, preview.RelaySelector)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	grants := append(append([]json.RawMessage{}, doc.Grants...), grant)
+	newPolicy, err := doc.ReplaceGrants(grants)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	now := s.now().UTC()
+	rule := model.SelectorPolicyRule{
+		ID: uuid.NewString(), SourceSelector: preview.SourceSelector, RelayNodeID: preview.RelayNodeID,
+		RelaySelector: preview.RelaySelector, CreatedBy: username, CreatedAt: now, UpdatedAt: now,
+	}
+	revision, readBack, afterHash, err := s.writeSelectorPolicy(ctx, username, "Peer Relay selector 授权新增："+preview.SourceSelector+" → "+preview.RelaySelector, doc, newPolicy)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	if err := s.repo.CompleteSelectorPolicyUpdate(ctx, revision.ID, readBack, &rule, "", []model.AuditLog{
+		s.auditRecord(username, "selector-rule.create", rule.ID, "", jsonString(rule), "success"),
+		s.auditRecord(username, "policy.commit", revision.ID, revision.BeforeHash, afterHash, "success"),
+	}); err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	_ = s.repo.TrimRevisions(ctx, 30)
+	s.savePolicySyncState(ctx, readBack, afterHash, now)
+	return SelectorRuleMutationResult{ID: rule.ID, SourceSelector: rule.SourceSelector, RelayNodeID: rule.RelayNodeID, RelaySelector: rule.RelaySelector, BasePolicyHash: afterHash}, nil
+}
+
+func (s *PeerRelayService) DeleteSelectorRule(ctx context.Context, username, id, basePolicyHash string) (SelectorRuleMutationResult, error) {
+	if id == "" || len(id) > 36 || len(basePolicyHash) != 64 {
+		return SelectorRuleMutationResult{}, ErrValidation
+	}
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+	doc, _, role, err := s.prepareWrite(ctx, username)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	if !role.isAdmin {
+		return SelectorRuleMutationResult{}, ErrForbidden
+	}
+	if doc.Hash() != basePolicyHash {
+		return SelectorRuleMutationResult{}, fmt.Errorf("%w: Headscale Policy 已更新，请刷新 selector 规则列表", ErrConflict)
+	}
+	rule, err := s.repo.SelectorPolicyRule(ctx, id)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	count, err := countExact(doc.Grants, rule.SourceSelector, rule.RelaySelector)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	if count > 1 {
+		return SelectorRuleMutationResult{}, fmt.Errorf("%w: 同一 selector 授权在 Policy 中重复，不能确定删除哪一条", ErrConflict)
+	}
+	if count == 0 {
+		complexCount, err := countPeerRelaySelectorPair(doc.Grants, rule.SourceSelector, rule.RelaySelector)
+		if err != nil {
+			return SelectorRuleMutationResult{}, err
+		}
+		if complexCount > 0 {
+			return SelectorRuleMutationResult{}, fmt.Errorf("%w: Policy 中的 selector 规则已被改成复杂形式，Tailor 保持只读", ErrConflict)
+		}
+		if err := s.repo.DeleteSelectorPolicyRuleWithAudit(ctx, id, s.auditRecord(username, "selector-rule.orphan.delete", id, jsonString(rule), "", "success")); err != nil {
+			return SelectorRuleMutationResult{}, err
+		}
+		return SelectorRuleMutationResult{ID: id, SourceSelector: rule.SourceSelector, RelayNodeID: rule.RelayNodeID, RelaySelector: rule.RelaySelector, BasePolicyHash: doc.Hash()}, nil
+	}
+	if !s.cfg.PolicyWrites {
+		return SelectorRuleMutationResult{}, ErrPolicyWrites
+	}
+	grants, err := removeOneExact(doc.Grants, rule.SourceSelector, rule.RelaySelector)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	newPolicy, err := doc.ReplaceGrants(grants)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	now := s.now().UTC()
+	revision, readBack, afterHash, err := s.writeSelectorPolicy(ctx, username, "Peer Relay selector 授权移除："+rule.SourceSelector+" → "+rule.RelaySelector, doc, newPolicy)
+	if err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	if err := s.repo.CompleteSelectorPolicyUpdate(ctx, revision.ID, readBack, nil, id, []model.AuditLog{
+		s.auditRecord(username, "selector-rule.delete", id, jsonString(rule), "", "success"),
+		s.auditRecord(username, "policy.commit", revision.ID, revision.BeforeHash, afterHash, "success"),
+	}); err != nil {
+		return SelectorRuleMutationResult{}, err
+	}
+	_ = s.repo.TrimRevisions(ctx, 30)
+	s.savePolicySyncState(ctx, readBack, afterHash, now)
+	return SelectorRuleMutationResult{ID: id, SourceSelector: rule.SourceSelector, RelayNodeID: rule.RelayNodeID, RelaySelector: rule.RelaySelector, BasePolicyHash: afterHash}, nil
+}
+
+func (s *PeerRelayService) selectorRulePreview(ctx context.Context, doc *policy.Document, input SelectorRulePreviewInput) (SelectorRulePreview, error) {
+	users, err := s.repo.Users(ctx)
+	if err != nil {
+		return SelectorRulePreview{}, err
+	}
+	sourceSelector, err := validateWritableSourceSelector(input.SourceSelector, doc, users)
+	if err != nil {
+		return SelectorRulePreview{}, err
+	}
+	relay, err := s.repo.Relay(ctx, input.RelayNodeID)
+	if err != nil || relay.CancelledAt != nil || !relay.Selectable {
+		return SelectorRulePreview{}, fmt.Errorf("%w: 目标必须是已注册且可选择的 Relay", ErrValidation)
+	}
+	device, err := s.repo.Device(ctx, relay.NodeID)
+	if err != nil || device.Missing {
+		return SelectorRulePreview{}, fmt.Errorf("%w: Relay 设备当前不可用", ErrValidation)
+	}
+	relaySelector, err := selectorIP(selector(device))
+	if err != nil {
+		return SelectorRulePreview{}, fmt.Errorf("%w: Relay 缺少可用于 Policy 的 Tailscale IPv4 地址", ErrValidation)
+	}
+	devices, err := s.repo.Devices(ctx)
+	if err != nil {
+		return SelectorRulePreview{}, err
+	}
+	sources := make([]DeviceView, 0)
+	for _, candidate := range devices {
+		if candidate.Missing {
+			continue
+		}
+		matched, known := doc.MatchSourceSelector(sourceSelector, selector(candidate))
+		if !known {
+			return SelectorRulePreview{}, fmt.Errorf("%w: 无法完整评估 selector %s", ErrValidation, sourceSelector)
+		}
+		if matched {
+			sources = append(sources, deviceView(candidate))
+		}
+	}
+	preview := SelectorRulePreview{
+		SourceSelector: sourceSelector, RelayNodeID: relay.NodeID, RelaySelector: relaySelector,
+		Relay: RelayView{RelayNode: relay, Device: deviceView(device)}, SourceDevices: sources,
+		BasePolicyHash: doc.Hash(), Dynamic: true,
+	}
+	preview.ScopeHash = selectorRuleScopeHash(sourceSelector, relay.NodeID, relaySelector, sources)
+	if len(sources) == 0 {
+		preview.Warning = "当前没有匹配设备；用户设备或 Group 成员后续变化时，授权范围会动态更新"
+	} else {
+		preview.Warning = "用户设备或 Group 成员后续变化时，授权范围会动态更新"
+	}
+	return preview, nil
+}
+
+func (s *PeerRelayService) fillSelectorRuleSources(doc *policy.Document, users []model.HeadscaleUser, devices []model.Device, rawSelector string, result *[]DeviceView) error {
+	sourceSelector, err := validateWritableSourceSelector(rawSelector, doc, users)
+	if err != nil {
+		return err
+	}
+	for _, device := range devices {
+		if device.Missing {
+			continue
+		}
+		matched, known := doc.MatchSourceSelector(sourceSelector, selector(device))
+		if !known {
+			return fmt.Errorf("Policy selector %s 无法完整评估", sourceSelector)
+		}
+		if matched {
+			*result = append(*result, deviceView(device))
+		}
+	}
+	return nil
+}
+
+func (s *PeerRelayService) writeSelectorPolicy(ctx context.Context, actor, summary string, before *policy.Document, after string) (model.PolicyRevision, string, string, error) {
+	updated, err := policy.Parse(after)
+	if err != nil {
+		return model.PolicyRevision{}, "", "", err
+	}
+	beforeHash, afterHash := before.Hash(), updated.Hash()
+	revision := model.PolicyRevision{
+		ID: uuid.NewString(), Actor: actor, Summary: summary, Before: before.Raw, After: after,
+		BeforeHash: beforeHash, AfterHash: afterHash, Status: "pending", CreatedAt: s.now().UTC(),
+	}
+	if err := s.repo.CreateRevisionWithAudit(ctx, revision, s.auditRecord(actor, "policy.commit", revision.ID, jsonString(map[string]string{"hash": beforeHash}), jsonString(map[string]string{"hash": afterHash}), "pending")); err != nil {
+		return model.PolicyRevision{}, "", "", err
+	}
+	finish := func(status string) error {
+		return s.repo.FinishRevisionWithAudit(ctx, revision.ID, "", status, s.auditRecord(actor, "policy.commit", revision.ID, beforeHash, afterHash, status))
+	}
+	latestRaw, err := s.headscale.GetPolicy(ctx)
+	if err != nil {
+		if finishErr := finish("failed"); finishErr != nil {
+			return model.PolicyRevision{}, "", "", finishErr
+		}
+		return model.PolicyRevision{}, "", "", fmt.Errorf("%w: 写入前无法再次读取最新 Policy", ErrUnavailable)
+	}
+	latest, err := policy.Parse(latestRaw)
+	if err != nil || latest.Hash() != beforeHash {
+		if finishErr := finish("conflict"); finishErr != nil {
+			return model.PolicyRevision{}, "", "", finishErr
+		}
+		return model.PolicyRevision{}, "", "", fmt.Errorf("%w: Headscale Policy 在提交前再次发生变化", ErrConflict)
+	}
+	setErr := s.headscale.SetPolicy(ctx, after)
+	readBack, readErr := s.headscale.GetPolicy(ctx)
+	readDoc, parseErr := policy.Parse(readBack)
+	if readErr != nil || parseErr != nil || readDoc.Hash() != afterHash {
+		status := "failed"
+		if finishErr := finish(status); finishErr != nil {
+			return model.PolicyRevision{}, "", "", finishErr
+		}
+		if setErr != nil || readErr != nil {
+			return model.PolicyRevision{}, "", "", fmt.Errorf("%w: Headscale 未确认 Policy 提交结果", ErrUnavailable)
+		}
+		return model.PolicyRevision{}, "", "", fmt.Errorf("%w: Policy 回读结果与提交草稿不同", ErrConflict)
+	}
+	return revision, readBack, afterHash, nil
+}
+
+func (s *PeerRelayService) savePolicySyncState(ctx context.Context, raw, hash string, now time.Time) {
+	state, _ := s.repo.SyncState(ctx)
+	state.Key, state.PolicyHash, state.PolicyJSON, state.LastSuccess = "headscale", hash, raw, &now
+	state.LastError = ""
+	_ = s.repo.SaveSyncState(ctx, state)
+}
+
+func countPeerRelaySelectorPair(grants []json.RawMessage, source, relay string) (int, error) {
+	count := 0
+	for _, raw := range grants {
+		grant, err := policy.ParseGrant(raw)
+		if err != nil {
+			return 0, err
+		}
+		if grant.PeerRelay && len(grant.Src) == 1 && len(grant.Dst) == 1 && strings.EqualFold(grant.Src[0], source) && grant.Dst[0] == relay {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func appendViewWarning(target *string, warning string) {
+	if warning == "" {
+		return
+	}
+	if *target == "" {
+		*target = warning
+		return
+	}
+	*target += "；" + warning
+}
+
 func (s *PeerRelayService) Revisions(ctx context.Context, username string) ([]RevisionView, error) {
 	doc, _, _ := s.readPolicy(ctx)
 	role, err := s.roles(ctx, username, doc)
@@ -2226,6 +2702,76 @@ func groupMember(username, email string, members []string) bool {
 	return false
 }
 
+func validateWritableSourceSelector(raw string, doc *policy.Document, users []model.HeadscaleUser) (string, error) {
+	selector := strings.TrimSpace(raw)
+	if selector == "" || len([]rune(selector)) > 255 || strings.ContainsAny(selector, ",[]*\n\r\t") {
+		return "", ErrValidation
+	}
+	if strings.HasPrefix(selector, "group:") {
+		if _, ok := doc.Groups[selector]; !ok {
+			return "", fmt.Errorf("%w: Policy 中不存在 Group %s", ErrValidation, selector)
+		}
+		if err := validateWritableGroup(selector, doc.Groups, users, map[string]bool{}, 0); err != nil {
+			return "", err
+		}
+		return selector, nil
+	}
+	if strings.HasPrefix(selector, "tag:") || strings.HasPrefix(selector, "autogroup:") || strings.Contains(selector, "/") || strings.Contains(selector, ":") {
+		return "", ErrValidation
+	}
+	if len(matchingPolicyUsers(selector, users)) != 1 {
+		return "", fmt.Errorf("%w: 用户 selector 必须唯一匹配一个当前 Headscale 用户", ErrValidation)
+	}
+	return selector, nil
+}
+
+func validateWritableGroup(group string, groups map[string][]string, users []model.HeadscaleUser, seen map[string]bool, depth int) error {
+	if depth > 8 || seen[group] {
+		return fmt.Errorf("%w: Group 嵌套存在循环或超过支持深度", ErrValidation)
+	}
+	members, ok := groups[group]
+	if !ok {
+		return fmt.Errorf("%w: Policy 中不存在嵌套 Group %s", ErrValidation, group)
+	}
+	seen[group] = true
+	defer delete(seen, group)
+	for _, member := range members {
+		member = strings.TrimSpace(member)
+		if strings.HasPrefix(member, "group:") {
+			if err := validateWritableGroup(member, groups, users, seen, depth+1); err != nil {
+				return err
+			}
+			continue
+		}
+		if member == "" || len(matchingPolicyUsers(member, users)) != 1 {
+			return fmt.Errorf("%w: Group %s 含有无法完整识别的成员", ErrValidation, group)
+		}
+	}
+	return nil
+}
+
+func matchingPolicyUsers(selector string, users []model.HeadscaleUser) []model.HeadscaleUser {
+	matches := make([]model.HeadscaleUser, 0, 1)
+	for _, user := range users {
+		username := strings.TrimSuffix(strings.TrimSpace(user.Username), "@")
+		if strings.EqualFold(selector, user.Username) || strings.EqualFold(selector, username+"@") || (user.Email != "" && strings.EqualFold(selector, user.Email)) {
+			matches = append(matches, user)
+		}
+	}
+	return matches
+}
+
+func selectorRuleScopeHash(selector, relayID, relayIP string, sources []DeviceView) string {
+	nodeIDs := make([]string, 0, len(sources))
+	for _, source := range sources {
+		nodeIDs = append(nodeIDs, source.NodeID)
+	}
+	sort.Strings(nodeIDs)
+	canonical := selector + "\x00" + relayID + "\x00" + relayIP + "\x00" + strings.Join(nodeIDs, "\x00")
+	sum := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(sum[:])
+}
+
 func belongsToAny(groups, allowed []string) bool {
 	for _, group := range groups {
 		if stringContainsFold(allowed, group) {
@@ -2410,7 +2956,7 @@ func validateEndpoint(value string) error {
 			return errors.New("invalid endpoint")
 		}
 		for _, char := range label {
-			if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '-') {
+			if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' {
 				return errors.New("invalid endpoint")
 			}
 		}

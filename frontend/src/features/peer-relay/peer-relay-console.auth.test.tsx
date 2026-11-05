@@ -17,7 +17,9 @@ vi.mock("@/api/peer-relay", () => ({
     {},
     {
       get: (_target, property) =>
-        property === "dashboard" ? mocks.dashboard : vi.fn(),
+        property === "dashboard"
+          ? mocks.dashboard
+          : vi.fn().mockResolvedValue([]),
     }
   ),
 }))
@@ -99,7 +101,7 @@ describe("PeerRelayConsole authentication", () => {
 
     renderConsole(queryClient)
 
-    expect(await screen.findByText("alice")).toBeInTheDocument()
+    expect((await screen.findAllByText("alice")).length).toBeGreaterThan(0)
     expect(screen.queryByRole("link", { name: /使用 SSO 登录/ })).toBeNull()
   })
 })

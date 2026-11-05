@@ -28,11 +28,15 @@ type PeerRelayRepository interface {
 	InvalidatePendingApplicationWithAudit(context.Context, model.RelayApplication, model.AuditLog) error
 	CompleteApplicationReview(context.Context, model.RelayApplication, *model.RelayNode, model.AuditLog) error
 	Assignments(context.Context, string) ([]model.RelayAssignment, error)
+	SelectorPolicyRules(context.Context) ([]model.SelectorPolicyRule, error)
+	SelectorPolicyRule(context.Context, string) (model.SelectorPolicyRule, error)
 	SaveAssignmentsWithAudit(context.Context, string, []model.RelayAssignment, model.AuditLog) error
 	SaveAssignmentsBatchWithAudit(context.Context, []string, []model.RelayAssignment, model.AuditLog) error
 	CreateRevisionWithAudit(context.Context, model.PolicyRevision, model.AuditLog) error
 	FinishRevisionWithAudit(context.Context, string, string, string, model.AuditLog) error
 	CompletePolicyUpdate(context.Context, string, []string, string, []model.RelayAssignment, []model.AuditLog) error
+	CompleteSelectorPolicyUpdate(context.Context, string, string, *model.SelectorPolicyRule, string, []model.AuditLog) error
+	DeleteSelectorPolicyRuleWithAudit(context.Context, string, model.AuditLog) error
 	Revisions(context.Context, int) ([]model.PolicyRevision, error)
 	Revision(context.Context, string) (model.PolicyRevision, error)
 	LatestSuccessfulRevision(context.Context) (model.PolicyRevision, error)
@@ -249,6 +253,21 @@ func (r *peerRelayRepository) Assignments(ctx context.Context, sourceNodeID stri
 	return values, err
 }
 
+func (r *peerRelayRepository) SelectorPolicyRules(ctx context.Context) ([]model.SelectorPolicyRule, error) {
+	var values []model.SelectorPolicyRule
+	err := r.db.WithContext(ctx).Order("created_at ASC, id ASC").Find(&values).Error
+	return values, err
+}
+
+func (r *peerRelayRepository) SelectorPolicyRule(ctx context.Context, id string) (model.SelectorPolicyRule, error) {
+	var value model.SelectorPolicyRule
+	err := r.db.WithContext(ctx).First(&value, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.SelectorPolicyRule{}, ErrNotFound
+	}
+	return value, err
+}
+
 func (r *peerRelayRepository) SaveAssignmentsWithAudit(ctx context.Context, sourceNodeID string, values []model.RelayAssignment, audit model.AuditLog) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("source_node_id = ?", sourceNodeID).Delete(&model.RelayAssignment{}).Error; err != nil {
@@ -330,6 +349,51 @@ func (r *peerRelayRepository) CompletePolicyUpdate(ctx context.Context, revision
 			}
 		}
 		return nil
+	})
+}
+
+func (r *peerRelayRepository) CompleteSelectorPolicyUpdate(ctx context.Context, revisionID, after string, rule *model.SelectorPolicyRule, deleteRuleID string, audits []model.AuditLog) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.PolicyRevision{}).Where("id = ? AND status = ?", revisionID, "pending").Updates(map[string]any{"after": after, "status": "success"})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrNotFound
+		}
+		if rule != nil {
+			if err := tx.Create(rule).Error; err != nil {
+				return err
+			}
+		}
+		if deleteRuleID != "" {
+			result := tx.Delete(&model.SelectorPolicyRule{}, "id = ?", deleteRuleID)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return ErrNotFound
+			}
+		}
+		if len(audits) > 0 {
+			if err := tx.Create(&audits).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *peerRelayRepository) DeleteSelectorPolicyRuleWithAudit(ctx context.Context, id string, audit model.AuditLog) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Delete(&model.SelectorPolicyRule{}, "id = ?", id)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrNotFound
+		}
+		return tx.Create(&audit).Error
 	})
 }
 

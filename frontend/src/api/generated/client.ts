@@ -33,6 +33,7 @@ import type {
   CanvasGraph,
   CompleteOIDCLoginParams,
   ConflictProblemResponse,
+  DeletePolicySelectorRuleParams,
   Device,
   Example,
   ExampleInput,
@@ -45,11 +46,16 @@ import type {
   ListDevicesParams,
   ListExamplesParams,
   ListRelaysParams,
+  ManagedPolicySelectorRule,
   NotFoundProblemResponse,
   PeerRelaySettings,
   PeerRelaySettingsInput,
   PolicyRevision,
   PolicyRevisionDetail,
+  PolicySelectorRuleInput,
+  PolicySelectorRuleMutationResult,
+  PolicySelectorRulePreview,
+  PolicySelectorRulePreviewInput,
   RateLimitedProblemResponse,
   Relay,
   RelayApplication,
@@ -3369,6 +3375,485 @@ export const useUpdateAssignmentsBatch = <TError = ValidationProblemResponse | U
         TContext
       > => {
       return useMutation(getUpdateAssignmentsBatchMutationOptions(options), queryClient);
+    }
+
+export type listPolicySelectorRulesResponse200 = {
+  data: ManagedPolicySelectorRule[]
+  status: 200
+}
+
+export type listPolicySelectorRulesResponse401 = {
+  data: UnauthorizedProblemResponse
+  status: 401
+}
+
+export type listPolicySelectorRulesResponse403 = {
+  data: ForbiddenProblemResponse
+  status: 403
+}
+
+export type listPolicySelectorRulesResponse503 = {
+  data: UnavailableProblemResponse
+  status: 503
+}
+
+export type listPolicySelectorRulesResponseSuccess = (listPolicySelectorRulesResponse200) & {
+  headers: Headers;
+};
+export type listPolicySelectorRulesResponseError = (listPolicySelectorRulesResponse401 | listPolicySelectorRulesResponse403 | listPolicySelectorRulesResponse503) & {
+  headers: Headers;
+};
+
+export type listPolicySelectorRulesResponse = (listPolicySelectorRulesResponseSuccess | listPolicySelectorRulesResponseError)
+
+export const getListPolicySelectorRulesUrl = () => {
+
+
+
+
+  return `/policy/selector-rules`
+}
+
+/**
+ * @summary 列出 Tailor 管理的用户或 Group selector Relay 规则
+ */
+export const listPolicySelectorRules = async ( options?: RequestInit): Promise<listPolicySelectorRulesResponse> => {
+
+  return customFetch<listPolicySelectorRulesResponse>(getListPolicySelectorRulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPolicySelectorRulesQueryKey = () => {
+    return [
+    `/policy/selector-rules`
+    ] as const;
+    }
+
+
+export const getListPolicySelectorRulesQueryOptions = <TData = Awaited<ReturnType<typeof listPolicySelectorRules>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPolicySelectorRules>>, TError, TData>>, }
+) => {
+
+const {query: queryOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPolicySelectorRulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPolicySelectorRules>>> = ({ signal }) => listPolicySelectorRules({ signal });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPolicySelectorRules>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListPolicySelectorRulesQueryResult = NonNullable<Awaited<ReturnType<typeof listPolicySelectorRules>>>
+export type ListPolicySelectorRulesQueryError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse
+
+
+export function useListPolicySelectorRules<TData = Awaited<ReturnType<typeof listPolicySelectorRules>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPolicySelectorRules>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPolicySelectorRules>>,
+          TError,
+          Awaited<ReturnType<typeof listPolicySelectorRules>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPolicySelectorRules<TData = Awaited<ReturnType<typeof listPolicySelectorRules>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPolicySelectorRules>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPolicySelectorRules>>,
+          TError,
+          Awaited<ReturnType<typeof listPolicySelectorRules>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPolicySelectorRules<TData = Awaited<ReturnType<typeof listPolicySelectorRules>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPolicySelectorRules>>, TError, TData>>, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 列出 Tailor 管理的用户或 Group selector Relay 规则
+ */
+
+export function useListPolicySelectorRules<TData = Awaited<ReturnType<typeof listPolicySelectorRules>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPolicySelectorRules>>, TError, TData>>, }
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListPolicySelectorRulesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type createPolicySelectorRuleResponse200 = {
+  data: PolicySelectorRuleMutationResult
+  status: 200
+}
+
+export type createPolicySelectorRuleResponse400 = {
+  data: ValidationProblemResponse
+  status: 400
+}
+
+export type createPolicySelectorRuleResponse401 = {
+  data: UnauthorizedProblemResponse
+  status: 401
+}
+
+export type createPolicySelectorRuleResponse403 = {
+  data: ForbiddenProblemResponse
+  status: 403
+}
+
+export type createPolicySelectorRuleResponse409 = {
+  data: ConflictProblemResponse
+  status: 409
+}
+
+export type createPolicySelectorRuleResponse429 = {
+  data: RateLimitedProblemResponse
+  status: 429
+}
+
+export type createPolicySelectorRuleResponse503 = {
+  data: UnavailableProblemResponse
+  status: 503
+}
+
+export type createPolicySelectorRuleResponseSuccess = (createPolicySelectorRuleResponse200) & {
+  headers: Headers;
+};
+export type createPolicySelectorRuleResponseError = (createPolicySelectorRuleResponse400 | createPolicySelectorRuleResponse401 | createPolicySelectorRuleResponse403 | createPolicySelectorRuleResponse409 | createPolicySelectorRuleResponse429 | createPolicySelectorRuleResponse503) & {
+  headers: Headers;
+};
+
+export type createPolicySelectorRuleResponse = (createPolicySelectorRuleResponseSuccess | createPolicySelectorRuleResponseError)
+
+export const getCreatePolicySelectorRuleUrl = () => {
+
+
+
+
+  return `/policy/selector-rules`
+}
+
+/**
+ * @summary 创建用户或 Group selector Relay 规则
+ */
+export const createPolicySelectorRule = async (policySelectorRuleInput: PolicySelectorRuleInput, options?: RequestInit): Promise<createPolicySelectorRuleResponse> => {
+
+  return customFetch<createPolicySelectorRuleResponse>(getCreatePolicySelectorRuleUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(policySelectorRuleInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePolicySelectorRuleMutationOptions = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPolicySelectorRule>>, TError,{data: PolicySelectorRuleInput}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof createPolicySelectorRule>>, TError,{data: PolicySelectorRuleInput}, TContext> => {
+
+const mutationKey = ['createPolicySelectorRule'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPolicySelectorRule>>, {data: PolicySelectorRuleInput}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPolicySelectorRule(data,)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePolicySelectorRuleMutationResult = NonNullable<Awaited<ReturnType<typeof createPolicySelectorRule>>>
+    export type CreatePolicySelectorRuleMutationBody = PolicySelectorRuleInput
+    export type CreatePolicySelectorRuleMutationError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse
+
+    /**
+ * @summary 创建用户或 Group selector Relay 规则
+ */
+export const useCreatePolicySelectorRule = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPolicySelectorRule>>, TError,{data: PolicySelectorRuleInput}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createPolicySelectorRule>>,
+        TError,
+        {data: PolicySelectorRuleInput},
+        TContext
+      > => {
+      return useMutation(getCreatePolicySelectorRuleMutationOptions(options), queryClient);
+    }
+
+export type previewPolicySelectorRuleResponse200 = {
+  data: PolicySelectorRulePreview
+  status: 200
+}
+
+export type previewPolicySelectorRuleResponse400 = {
+  data: ValidationProblemResponse
+  status: 400
+}
+
+export type previewPolicySelectorRuleResponse401 = {
+  data: UnauthorizedProblemResponse
+  status: 401
+}
+
+export type previewPolicySelectorRuleResponse403 = {
+  data: ForbiddenProblemResponse
+  status: 403
+}
+
+export type previewPolicySelectorRuleResponse503 = {
+  data: UnavailableProblemResponse
+  status: 503
+}
+
+export type previewPolicySelectorRuleResponseSuccess = (previewPolicySelectorRuleResponse200) & {
+  headers: Headers;
+};
+export type previewPolicySelectorRuleResponseError = (previewPolicySelectorRuleResponse400 | previewPolicySelectorRuleResponse401 | previewPolicySelectorRuleResponse403 | previewPolicySelectorRuleResponse503) & {
+  headers: Headers;
+};
+
+export type previewPolicySelectorRuleResponse = (previewPolicySelectorRuleResponseSuccess | previewPolicySelectorRuleResponseError)
+
+export const getPreviewPolicySelectorRuleUrl = () => {
+
+
+
+
+  return `/policy/selector-rules/preview`
+}
+
+/**
+ * @summary 预览 selector Relay 规则当前命中设备
+ */
+export const previewPolicySelectorRule = async (policySelectorRulePreviewInput: PolicySelectorRulePreviewInput, options?: RequestInit): Promise<previewPolicySelectorRuleResponse> => {
+
+  return customFetch<previewPolicySelectorRuleResponse>(getPreviewPolicySelectorRuleUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(policySelectorRulePreviewInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewPolicySelectorRuleMutationOptions = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewPolicySelectorRule>>, TError,{data: PolicySelectorRulePreviewInput}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof previewPolicySelectorRule>>, TError,{data: PolicySelectorRulePreviewInput}, TContext> => {
+
+const mutationKey = ['previewPolicySelectorRule'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewPolicySelectorRule>>, {data: PolicySelectorRulePreviewInput}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewPolicySelectorRule(data,)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewPolicySelectorRuleMutationResult = NonNullable<Awaited<ReturnType<typeof previewPolicySelectorRule>>>
+    export type PreviewPolicySelectorRuleMutationBody = PolicySelectorRulePreviewInput
+    export type PreviewPolicySelectorRuleMutationError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse
+
+    /**
+ * @summary 预览 selector Relay 规则当前命中设备
+ */
+export const usePreviewPolicySelectorRule = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewPolicySelectorRule>>, TError,{data: PolicySelectorRulePreviewInput}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof previewPolicySelectorRule>>,
+        TError,
+        {data: PolicySelectorRulePreviewInput},
+        TContext
+      > => {
+      return useMutation(getPreviewPolicySelectorRuleMutationOptions(options), queryClient);
+    }
+
+export type deletePolicySelectorRuleResponse200 = {
+  data: PolicySelectorRuleMutationResult
+  status: 200
+}
+
+export type deletePolicySelectorRuleResponse400 = {
+  data: ValidationProblemResponse
+  status: 400
+}
+
+export type deletePolicySelectorRuleResponse401 = {
+  data: UnauthorizedProblemResponse
+  status: 401
+}
+
+export type deletePolicySelectorRuleResponse403 = {
+  data: ForbiddenProblemResponse
+  status: 403
+}
+
+export type deletePolicySelectorRuleResponse404 = {
+  data: NotFoundProblemResponse
+  status: 404
+}
+
+export type deletePolicySelectorRuleResponse409 = {
+  data: ConflictProblemResponse
+  status: 409
+}
+
+export type deletePolicySelectorRuleResponse429 = {
+  data: RateLimitedProblemResponse
+  status: 429
+}
+
+export type deletePolicySelectorRuleResponse503 = {
+  data: UnavailableProblemResponse
+  status: 503
+}
+
+export type deletePolicySelectorRuleResponseSuccess = (deletePolicySelectorRuleResponse200) & {
+  headers: Headers;
+};
+export type deletePolicySelectorRuleResponseError = (deletePolicySelectorRuleResponse400 | deletePolicySelectorRuleResponse401 | deletePolicySelectorRuleResponse403 | deletePolicySelectorRuleResponse404 | deletePolicySelectorRuleResponse409 | deletePolicySelectorRuleResponse429 | deletePolicySelectorRuleResponse503) & {
+  headers: Headers;
+};
+
+export type deletePolicySelectorRuleResponse = (deletePolicySelectorRuleResponseSuccess | deletePolicySelectorRuleResponseError)
+
+export const getDeletePolicySelectorRuleUrl = (id: string,
+    params: DeletePolicySelectorRuleParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/policy/selector-rules/${id}?${stringifiedParams}` : `/policy/selector-rules/${id}`
+}
+
+/**
+ * @summary 移除 Tailor 管理的 selector Relay 规则
+ */
+export const deletePolicySelectorRule = async (id: string,
+    params: DeletePolicySelectorRuleParams, options?: RequestInit): Promise<deletePolicySelectorRuleResponse> => {
+
+  return customFetch<deletePolicySelectorRuleResponse>(getDeletePolicySelectorRuleUrl(id,params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePolicySelectorRuleMutationOptions = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | NotFoundProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePolicySelectorRule>>, TError,{id: string;params: DeletePolicySelectorRuleParams}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof deletePolicySelectorRule>>, TError,{id: string;params: DeletePolicySelectorRuleParams}, TContext> => {
+
+const mutationKey = ['deletePolicySelectorRule'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePolicySelectorRule>>, {id: string;params: DeletePolicySelectorRuleParams}> = (props) => {
+          const {id,params} = props ?? {};
+
+          return  deletePolicySelectorRule(id,params,)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePolicySelectorRuleMutationResult = NonNullable<Awaited<ReturnType<typeof deletePolicySelectorRule>>>
+
+    export type DeletePolicySelectorRuleMutationError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | NotFoundProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse
+
+    /**
+ * @summary 移除 Tailor 管理的 selector Relay 规则
+ */
+export const useDeletePolicySelectorRule = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | NotFoundProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePolicySelectorRule>>, TError,{id: string;params: DeletePolicySelectorRuleParams}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deletePolicySelectorRule>>,
+        TError,
+        {id: string;params: DeletePolicySelectorRuleParams},
+        TContext
+      > => {
+      return useMutation(getDeletePolicySelectorRuleMutationOptions(options), queryClient);
     }
 
 export type syncHeadscaleResponse204 = {

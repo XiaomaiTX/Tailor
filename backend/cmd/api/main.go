@@ -41,7 +41,7 @@ func main() {
 	}
 	if err := database.AutoMigrate(
 		&model.Example{}, &model.HeadscaleUser{}, &model.Device{}, &model.RelayNode{},
-		&model.RelayApplication{}, &model.RelayAssignment{}, &model.PolicyRevision{},
+		&model.RelayApplication{}, &model.RelayAssignment{}, &model.SelectorPolicyRule{}, &model.PolicyRevision{},
 		&model.AuditLog{}, &model.SyncState{}, &model.PeerRelaySettings{},
 		&model.OIDCLoginState{}, &model.AuthSession{},
 	); err != nil {

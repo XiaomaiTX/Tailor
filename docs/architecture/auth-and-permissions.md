@@ -2,7 +2,7 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - backend/internal/middleware/auth_session.go
   - backend/internal/service/oidc.go
@@ -46,6 +46,7 @@ User and device ownership are resolved against synchronized Headscale IDs and no
 - Platform roles continue to come from Headscale Policy Groups and server configuration; OIDC `groups` claims are not used.
 - Policy writes are additionally disabled unless `PEER_RELAY_POLICY_WRITES=true`.
 - The network authorization canvas scopes source nodes in the service: admins and reviewers with all-device graph permission can inspect all devices; regular users can inspect their own source devices. Registered Relay targets are visible to authenticated users. Batch writes re-check each source device, tag state, Relay registration/selectability, IP availability, and the current Policy hash.
+- Selector-rule listing, preview, create, and delete routes are administrator-only in the service. The first write scope is one validated current Headscale user or fully resolvable `group:` selector to one registered selectable Relay IPv4 address; preview hashes are checked before writing. Reviewer delegation does not grant selector-rule management.
 - Headscale API credentials are backend-only. The React app never receives the API key.
 - Non-platform policy grants, unknown selectors, inherited relationships, and duplicate ambiguous exact grants are not silently rewritten.
 - Rollback is refused if the current live policy differs from the latest successful platform revision.

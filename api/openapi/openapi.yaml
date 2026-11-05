@@ -650,6 +650,115 @@ paths:
           $ref: '#/components/responses/ConflictProblem'
         '503':
           $ref: '#/components/responses/UnavailableProblem'
+  /policy/selector-rules:
+    get:
+      tags: [administration]
+      summary: 列出 Tailor 管理的用户或 Group selector Relay 规则
+      operationId: listPolicySelectorRules
+      responses:
+        '200':
+          description: Selector 规则及当前命中范围
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ManagedPolicySelectorRule' }
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+    post:
+      tags: [administration]
+      summary: 创建用户或 Group selector Relay 规则
+      operationId: createPolicySelectorRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicySelectorRuleInput'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: 规则已写入 Headscale Policy 并回读确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicySelectorRuleMutationResult'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /policy/selector-rules/preview:
+    post:
+      tags: [administration]
+      summary: 预览 selector Relay 规则当前命中设备
+      operationId: previewPolicySelectorRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicySelectorRulePreviewInput'
+      responses:
+        '200':
+          description: 当前设备命中范围、Policy 基线与范围摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicySelectorRulePreview'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /policy/selector-rules/{id}:
+    delete:
+      tags: [administration]
+      summary: 移除 Tailor 管理的 selector Relay 规则
+      operationId: deletePolicySelectorRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: basePolicyHash
+          in: query
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: 规则已移除并确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicySelectorRuleMutationResult'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
   /sync:
     post:
       tags: [administration]
@@ -1020,6 +1129,9 @@ components:
         source: { type: string, enum: [platform, external, inherited, unknown, exception, ''] }
         editable: { type: boolean }
         warning: { type: string }
+        grantMatches:
+          type: array
+          items: { $ref: '#/components/schemas/PolicyGrantMatch' }
     RelayGraph:
       type: object
       required: [device, relays, basePolicyHash, policyStale, policyWritesEnabled, canEdit]
@@ -1065,6 +1177,26 @@ components:
         source: { type: string, enum: [platform, external, inherited, unknown, exception] }
         editable: { type: boolean }
         warning: { type: string }
+        grantMatches:
+          type: array
+          items: { $ref: '#/components/schemas/PolicyGrantMatch' }
+    PolicyGrantMatch:
+      type: object
+      required: [grantId, src, dst, matchedSrc, matchedDst]
+      properties:
+        grantId: { type: string }
+        src:
+          type: array
+          items: { type: string }
+        dst:
+          type: array
+          items: { type: string }
+        matchedSrc:
+          type: array
+          items: { type: string }
+        matchedDst:
+          type: array
+          items: { type: string }
     CanvasGraph:
       type: object
       required: [nodes, edges, basePolicyHash, policyStale, policyWritesEnabled]
@@ -1127,6 +1259,63 @@ components:
         sourceNodeIds:
           type: array
           items: { type: string }
+    PolicySelectorRulePreviewInput:
+      type: object
+      required: [sourceSelector, relayNodeId]
+      properties:
+        sourceSelector: { type: string, minLength: 1, maxLength: 255 }
+        relayNodeId: { type: string, minLength: 1, maxLength: 120 }
+    PolicySelectorRuleInput:
+      type: object
+      required: [sourceSelector, relayNodeId, basePolicyHash, scopeHash]
+      properties:
+        sourceSelector: { type: string, minLength: 1, maxLength: 255 }
+        relayNodeId: { type: string, minLength: 1, maxLength: 120 }
+        basePolicyHash: { type: string, minLength: 64, maxLength: 64 }
+        scopeHash: { type: string, minLength: 64, maxLength: 64 }
+    PolicySelectorRulePreview:
+      type: object
+      required: [sourceSelector, relayNodeId, relaySelector, relay, sourceDevices, basePolicyHash, scopeHash, dynamic]
+      properties:
+        sourceSelector: { type: string }
+        relayNodeId: { type: string }
+        relaySelector: { type: string }
+        relay: { $ref: '#/components/schemas/Relay' }
+        sourceDevices:
+          type: array
+          items: { $ref: '#/components/schemas/Device' }
+        basePolicyHash: { type: string }
+        scopeHash: { type: string }
+        dynamic: { type: boolean }
+        warning: { type: string }
+    ManagedPolicySelectorRule:
+      type: object
+      required: [id, sourceSelector, relayNodeId, relaySelector, sourceDevices, inPolicy, targetChanged, readOnly, canDelete, createdBy, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        sourceSelector: { type: string }
+        relayNodeId: { type: string }
+        relaySelector: { type: string }
+        relay: { allOf: [{ $ref: '#/components/schemas/Relay' }] }
+        sourceDevices:
+          type: array
+          items: { $ref: '#/components/schemas/Device' }
+        inPolicy: { type: boolean }
+        targetChanged: { type: boolean }
+        readOnly: { type: boolean }
+        canDelete: { type: boolean }
+        warning: { type: string }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+    PolicySelectorRuleMutationResult:
+      type: object
+      required: [id, sourceSelector, relayNodeId, relaySelector, basePolicyHash]
+      properties:
+        id: { type: string, format: uuid }
+        sourceSelector: { type: string }
+        relayNodeId: { type: string }
+        relaySelector: { type: string }
+        basePolicyHash: { type: string }
     RelayDashboard:
       type: object
       required: [deviceCount, relayCount, selectableRelayCount, assignmentCount, pendingApplicationCount, policyWritesEnabled, currentUser]

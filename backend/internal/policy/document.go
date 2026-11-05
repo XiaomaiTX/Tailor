@@ -23,16 +23,29 @@ type Document struct {
 }
 
 type Grant struct {
-	Src        []string
-	Dst        []string
-	PeerRelay  bool
-	ExactShape bool
+	Src                         []string
+	Dst                         []string
+	PeerRelay                   bool
+	ExactShape                  bool
+	RelayEvaluationSupported    bool
+	ID                          string
+	UnsupportedEvaluationReason string
 }
 
 type RelayRelationState struct {
 	Exact     bool
 	Inherited bool
 	Unknown   bool
+	Matches   []GrantMatch
+	Warnings  []string
+}
+
+type GrantMatch struct {
+	GrantID    string   `json:"grantId"`
+	Src        []string `json:"src"`
+	Dst        []string `json:"dst"`
+	MatchedSrc []string `json:"matchedSrc"`
+	MatchedDst []string `json:"matchedDst"`
 }
 
 func Parse(raw string) (*Document, error) {
@@ -129,14 +142,14 @@ func (d *Document) PeerRelayGrants() ([]Grant, error) {
 
 func parseGrant(raw json.RawMessage) (Grant, error) {
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
+	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
 		return Grant{}, errors.New("Policy contains an invalid grant object")
 	}
 	var grant Grant
-	if err := json.Unmarshal(fields["src"], &grant.Src); err != nil {
+	if value, ok := fields["src"]; !ok || json.Unmarshal(value, &grant.Src) != nil || grant.Src == nil {
 		return Grant{}, errors.New("Policy grant src must be an array")
 	}
-	if err := json.Unmarshal(fields["dst"], &grant.Dst); err != nil {
+	if value, ok := fields["dst"]; !ok || json.Unmarshal(value, &grant.Dst) != nil || grant.Dst == nil {
 		return Grant{}, errors.New("Policy grant dst must be an array")
 	}
 	app := map[string]json.RawMessage{}
@@ -147,13 +160,31 @@ func parseGrant(raw json.RawMessage) (Grant, error) {
 	}
 	if capability, ok := app[RelayCapability]; ok {
 		var args []json.RawMessage
-		if err := json.Unmarshal(capability, &args); err != nil {
+		if err := json.Unmarshal(capability, &args); err != nil || args == nil {
 			return Grant{}, errors.New("Peer Relay capability value must be an array")
 		}
 		grant.PeerRelay = true
+		grant.ID = grantID(raw)
+		grant.RelayEvaluationSupported = len(fields) == 3 && len(app) == 1 && len(args) == 0
+		if !grant.RelayEvaluationSupported {
+			grant.UnsupportedEvaluationReason = "grant 包含 Tailor 无法完整评估的额外字段或 capability"
+		}
 	}
-	grant.ExactShape = len(fields) == 3 && len(grant.Src) == 1 && len(grant.Dst) == 1 && grant.PeerRelay && len(app) == 1
+	grant.ExactShape = grant.RelayEvaluationSupported && len(grant.Src) == 1 && len(grant.Dst) == 1
 	return grant, nil
+}
+
+func grantID(raw json.RawMessage) string {
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(canonical)
+	return "grant-" + hex.EncodeToString(sum[:8])
 }
 
 func ParseGrant(raw json.RawMessage) (Grant, error) { return parseGrant(raw) }
@@ -217,56 +248,43 @@ func (d *Document) EffectiveRelayMatrix(sources, relays []DeviceSelector) ([][]R
 		if !grant.PeerRelay {
 			continue
 		}
-		sourceMatches := make([]bool, len(sources))
-		sourceUnknown := make([]bool, len(sources))
+		sourceMatches := make([]selectorMatchResult, len(sources))
 		for i, source := range sources {
-			sourceMatches[i], sourceUnknown[i] = selectorsMatch(grant.Src, source, DeviceSelector{}, d.Groups, d.Hosts, false)
+			sourceMatches[i] = matchSelectors(grant.Src, source, DeviceSelector{}, d.Groups, d.Hosts, false)
 		}
 		needsPeer := selectorsNeedPeer(grant.Dst, d.Groups, map[string]bool{}, 0)
-		relayMatches := make([]bool, len(relays))
-		relayUnknown := make([]bool, len(relays))
+		relayMatches := make([]selectorMatchResult, len(relays))
 		if !needsPeer {
 			for i, relay := range relays {
-				relayMatches[i], relayUnknown[i] = selectorsMatch(grant.Dst, relay, DeviceSelector{}, d.Groups, d.Hosts, true)
+				relayMatches[i] = matchSelectors(grant.Dst, relay, DeviceSelector{}, d.Groups, d.Hosts, true)
 			}
-		}
-		allKnown := true
-		for _, unknown := range sourceUnknown {
-			allKnown = allKnown && !unknown
-		}
-		for _, unknown := range relayUnknown {
-			allKnown = allKnown && !unknown
-		}
-		if allKnown && !needsPeer {
-			sourceIDs := make([]int, 0, len(sources))
-			relayIDs := make([]int, 0, len(relays))
-			for i, matched := range sourceMatches {
-				if matched {
-					sourceIDs = append(sourceIDs, i)
-				}
-			}
-			for i, matched := range relayMatches {
-				if matched {
-					relayIDs = append(relayIDs, i)
-				}
-			}
-			for _, sourceID := range sourceIDs {
-				for _, relayID := range relayIDs {
-					markRelayRelation(&result[sourceID][relayID], grant, sources[sourceID], relays[relayID])
-				}
-			}
-			continue
 		}
 		for sourceID, source := range sources {
 			for relayID, relay := range relays {
-				relayMatch, relayIsUnknown := relayMatches[relayID], relayUnknown[relayID]
+				relayMatch := relayMatches[relayID]
 				if needsPeer {
-					relayMatch, relayIsUnknown = selectorsMatch(grant.Dst, relay, source, d.Groups, d.Hosts, true)
+					relayMatch = matchSelectors(grant.Dst, relay, source, d.Groups, d.Hosts, true)
 				}
-				if sourceMatches[sourceID] && relayMatch {
-					markRelayRelation(&result[sourceID][relayID], grant, source, relay)
-				} else if sourceUnknown[sourceID] || relayIsUnknown {
+				sourceMatch := sourceMatches[sourceID]
+				sourcePossible := len(sourceMatch.Matched) > 0 || sourceMatch.Unknown
+				relayPossible := len(relayMatch.Matched) > 0 || relayMatch.Unknown
+				if sourcePossible && relayPossible && (!grant.RelayEvaluationSupported || sourceMatch.Unknown || relayMatch.Unknown) {
 					result[sourceID][relayID].Unknown = true
+					if !grant.RelayEvaluationSupported {
+						appendUnique(&result[sourceID][relayID].Warnings, grant.UnsupportedEvaluationReason)
+					} else {
+						unknownSelectors := append(append([]string{}, sourceMatch.UnknownSelectors...), relayMatch.UnknownSelectors...)
+						for _, selector := range unknownSelectors {
+							appendUnique(&result[sourceID][relayID].Warnings, selectorEvaluationWarning(selector))
+						}
+					}
+				}
+				if len(sourceMatch.Matched) == 0 || len(relayMatch.Matched) == 0 || !grant.RelayEvaluationSupported {
+					continue
+				}
+				markRelayRelation(&result[sourceID][relayID], grant, source, relay, sourceMatch.Matched, relayMatch.Matched)
+				if containsSelector(sourceMatch.Matched, "autogroup:danger-all") {
+					appendUnique(&result[sourceID][relayID].Warnings, "autogroup:danger-all 范围包含所有 IP 地址")
 				}
 			}
 		}
@@ -274,17 +292,55 @@ func (d *Document) EffectiveRelayMatrix(sources, relays []DeviceSelector) ([][]R
 	return result, nil
 }
 
-func markRelayRelation(state *RelayRelationState, grant Grant, source, relay DeviceSelector) {
+func appendUnique(values *[]string, value string) {
+	if value == "" {
+		return
+	}
+	for _, existing := range *values {
+		if existing == value {
+			return
+		}
+	}
+	*values = append(*values, value)
+}
+
+func containsSelector(values []string, selector string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, selector) {
+			return true
+		}
+	}
+	return false
+}
+
+func selectorEvaluationWarning(selector string) string {
+	switch selector {
+	case "autogroup:internet":
+		return "autogroup:internet 表示出口节点；Tailor 未同步出口节点路由状态，不能作为普通 Relay 确认"
+	case "autogroup:self":
+		return "autogroup:self 仅能用于目的端，需要双方用户 ID，且排除已打标签的目的设备"
+	case "autogroup:danger-all":
+		return "autogroup:danger-all 仅支持作为源 selector，范围覆盖所有 IP 地址"
+	default:
+		return "Policy selector 无法完整评估：" + selector
+	}
+}
+
+func markRelayRelation(state *RelayRelationState, grant Grant, source, relay DeviceSelector, matchedSrc, matchedDst []string) {
 	if grant.ExactShape && selectorMatchesIP(grant.Src[0], source.IPs) && selectorMatchesIP(grant.Dst[0], relay.IPs) {
 		state.Exact = true
 	} else {
 		state.Inherited = true
 	}
+	state.Matches = append(state.Matches, GrantMatch{
+		GrantID: grant.ID, Src: append([]string{}, grant.Src...), Dst: append([]string{}, grant.Dst...),
+		MatchedSrc: append([]string{}, matchedSrc...), MatchedDst: append([]string{}, matchedDst...),
+	})
 }
 
 func selectorsNeedPeer(selectors []string, groups map[string][]string, seen map[string]bool, depth int) bool {
 	if depth > 8 {
-		return false
+		return true
 	}
 	for _, selector := range selectors {
 		selector = strings.TrimSpace(selector)
@@ -314,13 +370,29 @@ type DeviceSelector struct {
 }
 
 func selectorsMatch(selectors []string, device, peer DeviceSelector, groups map[string][]string, hosts map[string]string, allowSelf bool) (bool, bool) {
-	matched, unknown := false, false
+	result := matchSelectors(selectors, device, peer, groups, hosts, allowSelf)
+	return len(result.Matched) > 0, result.Unknown
+}
+
+type selectorMatchResult struct {
+	Matched          []string
+	Unknown          bool
+	UnknownSelectors []string
+}
+
+func matchSelectors(selectors []string, device, peer DeviceSelector, groups map[string][]string, hosts map[string]string, allowSelf bool) selectorMatchResult {
+	result := selectorMatchResult{Matched: []string{}}
 	for _, selector := range selectors {
 		contains, known := selectorMatches(selector, device, peer, groups, hosts, allowSelf, 0)
-		matched = matched || contains
-		unknown = unknown || !known
+		if contains {
+			result.Matched = append(result.Matched, strings.TrimSpace(selector))
+		}
+		if !known {
+			result.Unknown = true
+			appendUnique(&result.UnknownSelectors, strings.TrimSpace(selector))
+		}
 	}
-	return matched, unknown
+	return result
 }
 
 var wildcardUser = regexp.MustCompile(`^\*@(.+)$`)
@@ -334,21 +406,26 @@ func selectorMatches(selector string, device, peer DeviceSelector, groups map[st
 		return true, true
 	}
 	if strings.HasPrefix(selector, "group:") {
+		if device.Tagged {
+			return false, true
+		}
 		members, ok := groups[selector]
 		if !ok {
 			return false, false
 		}
+		matched, allKnown := false, true
 		for _, member := range members {
 			if selectorGroupMember(member, device.Username, device.Email) {
-				return true, true
+				matched = true
+				continue
 			}
 			if strings.HasPrefix(member, "group:") {
-				if match, known := selectorMatches(member, device, peer, groups, hosts, allowSelf, depth+1); match || !known {
-					return match, known
-				}
+				match, known := selectorMatches(member, device, peer, groups, hosts, allowSelf, depth+1)
+				matched = matched || match
+				allKnown = allKnown && known
 			}
 		}
-		return false, true
+		return matched, allKnown
 	}
 	if strings.HasPrefix(selector, "tag:") {
 		for _, tag := range device.Tags {
@@ -365,30 +442,75 @@ func selectorMatches(selector string, device, peer DeviceSelector, groups map[st
 		return !device.Tagged, true
 	}
 	if selector == "autogroup:self" {
-		if !allowSelf || device.UserID == "" || peer.UserID == "" {
+		if !allowSelf {
+			return false, false
+		}
+		if device.Tagged {
+			return false, true
+		}
+		if device.UserID == "" || peer.UserID == "" {
 			return false, false
 		}
 		return device.UserID == peer.UserID, true
 	}
+	if selector == "autogroup:internet" {
+		if !allowSelf {
+			return false, false
+		}
+		// Tailor does not synchronize exit-node route state, so it cannot prove membership.
+		return false, false
+	}
+	if selector == "autogroup:danger-all" {
+		if allowSelf {
+			return false, false
+		}
+		for _, ip := range device.IPs {
+			if _, err := netip.ParseAddr(ip); err == nil {
+				return true, true
+			}
+		}
+		return false, false
+	}
 	if value, ok := hosts[selector]; ok {
-		return selectorMatchesIP(value, device.IPs), true
+		matched, known := selectorMatchesIPValue(value, device.IPs)
+		return matched, known
 	}
 	if match, known := selectorMatchesIPValue(selector, device.IPs); known {
 		return match, true
 	}
 	if match := wildcardUser.FindStringSubmatch(selector); len(match) == 2 {
-		return strings.HasSuffix(strings.ToLower(device.Username), "@"+strings.ToLower(match[1])), true
+		if device.Tagged {
+			return false, true
+		}
+		domain := "@" + strings.ToLower(match[1])
+		return strings.HasSuffix(strings.ToLower(device.Username), domain) || strings.HasSuffix(strings.ToLower(device.Email), domain), true
 	}
 	if strings.HasSuffix(selector, "@") {
+		if device.Tagged {
+			return false, true
+		}
 		return strings.EqualFold(strings.TrimSuffix(device.Username, "@"), strings.TrimSuffix(selector, "@")), true
 	}
-	if strings.EqualFold(selector, device.Username) {
-		return true, true
+	if strings.Contains(selector, "@") && device.Tagged {
+		return false, true
 	}
 	if strings.EqualFold(selector, device.Hostname) || strings.EqualFold(selector, device.GivenName) {
 		return true, true
 	}
+	if device.Tagged && strings.EqualFold(selector, device.Username) {
+		return false, true
+	}
+	if strings.EqualFold(selector, device.Username) {
+		return true, true
+	}
+	if device.Email != "" && strings.EqualFold(selector, device.Email) {
+		return true, true
+	}
 	return false, false
+}
+
+func (d *Document) MatchSourceSelector(selector string, device DeviceSelector) (bool, bool) {
+	return selectorMatches(selector, device, DeviceSelector{}, d.Groups, d.Hosts, false, 0)
 }
 
 func selectorGroupMember(member, username, email string) bool {
@@ -515,7 +637,7 @@ func skipTrivia(raw []byte, index int) int {
 		}
 		if index+1 < len(raw) && raw[index] == '/' && raw[index+1] == '*' {
 			index += 2
-			for index+1 < len(raw) && !(raw[index] == '*' && raw[index+1] == '/') {
+			for index+1 < len(raw) && (raw[index] != '*' || raw[index+1] != '/') {
 				index++
 			}
 			if index+1 < len(raw) {

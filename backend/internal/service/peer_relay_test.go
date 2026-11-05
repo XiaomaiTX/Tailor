@@ -52,6 +52,11 @@ func (f *peerRelayHeadscaleFake) replacePolicy(value string) {
 	defer f.mu.Unlock()
 	f.policy = value
 }
+func (f *peerRelayHeadscaleFake) addNode(value headscale.Node) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nodes = append(f.nodes, value)
+}
 
 func newPeerRelayTestService(t *testing.T, rawPolicy, applicantMode string) (*PeerRelayService, *peerRelayHeadscaleFake, repository.PeerRelayRepository) {
 	t.Helper()
@@ -66,7 +71,7 @@ func newPeerRelayTestService(t *testing.T, rawPolicy, applicantMode string) (*Pe
 	t.Cleanup(func() { _ = sqlDatabase.Close() })
 	if err := database.AutoMigrate(
 		&model.HeadscaleUser{}, &model.Device{}, &model.RelayNode{}, &model.RelayApplication{},
-		&model.RelayAssignment{}, &model.PolicyRevision{}, &model.AuditLog{}, &model.SyncState{},
+		&model.RelayAssignment{}, &model.SelectorPolicyRule{}, &model.PolicyRevision{}, &model.AuditLog{}, &model.SyncState{},
 		&model.PeerRelaySettings{},
 	); err != nil {
 		t.Fatal(err)
@@ -155,7 +160,7 @@ func TestPeerRelayRolesApplicationsAndOwnership(t *testing.T) {
 	if approvedRelay.DisplayName != "Alice Relay Approved" || approvedRelay.Region != "Shenzhen" || approvedRelay.PublicEndpoint != "relay.example.test" {
 		t.Fatalf("approved metadata override was not applied: %+v", approvedRelay)
 	}
-	if err := svc.CancelApplication(ctx, "alice", application.ID); !errors.Is(err, ErrForbidden) {
+	if err := svc.CancelApplication(ctx, "alice", application.ID); !errors.Is(err, ErrConflict) {
 		t.Fatalf("completed application cancellation error=%v", err)
 	}
 }
@@ -207,6 +212,124 @@ func TestPeerRelayGrantCommitPreservesPolicyAndRejectsStaleHash(t *testing.T) {
 	client.replacePolicy(externalPolicy)
 	if _, err := svc.UpdateAssignments(ctx, "alice", AssignmentInput{SourceNodeID: "node-alice", RelayNodeIDs: []string{"node-relay"}, BasePolicyHash: updatedDoc.Hash()}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("external policy change error=%v", err)
+	}
+}
+
+func TestSelectorRuleManagementPreservesGroupSelectorAndTracksMembership(t *testing.T) {
+	ctx := context.Background()
+	svc, client, repo := newPeerRelayTestService(t, testPolicy(), "all")
+	if err := svc.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RegisterRelay(ctx, "admin", "node-relay", RelayInput{DisplayName: "Primary Relay"}); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := svc.PreviewSelectorRule(ctx, "admin", SelectorRulePreviewInput{
+		SourceSelector: "group:relay-reviewer", RelayNodeID: "node-relay",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.SourceDevices) != 1 || preview.SourceDevices[0].NodeID != "node-reviewer" || !preview.Dynamic {
+		t.Fatalf("unexpected initial selector preview: %+v", preview)
+	}
+	created, err := svc.CreateSelectorRule(ctx, "admin", SelectorRuleInput{
+		SourceSelector: preview.SourceSelector, RelayNodeID: preview.RelayNodeID,
+		BasePolicyHash: preview.BasePolicyHash, ScopeHash: preview.ScopeHash,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.SourceSelector != "group:relay-reviewer" || created.RelaySelector != "100.64.0.20" {
+		t.Fatalf("selector was expanded or target changed: %+v", created)
+	}
+	if err := svc.CancelRelay(ctx, "admin", "node-relay"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Relay with a dynamic selector rule was cancelled: %v", err)
+	}
+	stored, err := repo.SelectorPolicyRules(ctx)
+	if err != nil || len(stored) != 1 || stored[0].SourceSelector != "group:relay-reviewer" {
+		t.Fatalf("managed selector record=%+v err=%v", stored, err)
+	}
+
+	currentPolicy, err := client.GetPolicy(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedGroups := strings.Replace(currentPolicy, `"group:relay-reviewer": ["reviewer@example.com"]`, `"group:relay-reviewer": ["reviewer@example.com", "bob@example.com"]`, 1)
+	if changedGroups == currentPolicy {
+		t.Fatal("test policy did not contain expected group")
+	}
+	client.replacePolicy(changedGroups)
+	if err := svc.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	graph, err := svc.CanvasGraph(ctx, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, edge := range graph.Edges {
+		if edge.RelayNodeID == "node-relay" && (edge.SourceNodeID == "node-reviewer" || edge.SourceNodeID == "node-bob") {
+			found[edge.SourceNodeID] = edge.Source == "inherited" && len(edge.GrantMatches) == 1 && edge.GrantMatches[0].Src[0] == "group:relay-reviewer"
+		}
+	}
+	if !found["node-reviewer"] || !found["node-bob"] {
+		t.Fatalf("group membership changes did not update selector-derived edges: %+v", graph.Edges)
+	}
+
+	updatedDoc, err := policy.Parse(changedGroups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := svc.DeleteSelectorRule(ctx, "admin", created.ID, updatedDoc.Hash())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed.BasePolicyHash == updatedDoc.Hash() {
+		t.Fatal("deleting a managed selector rule did not update Policy")
+	}
+	finalRaw, _ := client.GetPolicy(ctx)
+	finalDoc, err := policy.Parse(finalRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, err := finalDoc.ExactRelayGrantCount("group:relay-reviewer", "100.64.0.20"); err != nil || count != 0 {
+		t.Fatalf("selector grant remains after removal: count=%d err=%v", count, err)
+	}
+	if !strings.Contains(finalRaw, `"group:relay-reviewer": ["reviewer@example.com", "bob@example.com"]`) || !strings.Contains(finalRaw, `"acls"`) {
+		t.Fatalf("selector removal changed unrelated policy fields: %s", finalRaw)
+	}
+}
+
+func TestSelectorRulePreviewScopeChangeConflictsAndRequiresAdmin(t *testing.T) {
+	ctx := context.Background()
+	svc, client, _ := newPeerRelayTestService(t, testPolicy(), "all")
+	if err := svc.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RegisterRelay(ctx, "admin", "node-relay", RelayInput{DisplayName: "Primary Relay"}); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := svc.PreviewSelectorRule(ctx, "admin", SelectorRulePreviewInput{SourceSelector: "alice@", RelayNodeID: "node-relay"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PreviewSelectorRule(ctx, "reviewer", SelectorRulePreviewInput{SourceSelector: "alice@", RelayNodeID: "node-relay"}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-admin selector preview error=%v", err)
+	}
+	client.addNode(headscale.Node{ID: "node-alice-new", UserID: "u-alice", Username: "alice", Hostname: "alice-tablet", IPAddresses: []string{"100.64.0.30"}})
+	if err := svc.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateSelectorRule(ctx, "admin", SelectorRuleInput{
+		SourceSelector: preview.SourceSelector, RelayNodeID: preview.RelayNodeID,
+		BasePolicyHash: preview.BasePolicyHash, ScopeHash: preview.ScopeHash,
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale selector scope error=%v", err)
+	}
+	refreshed, err := svc.PreviewSelectorRule(ctx, "admin", SelectorRulePreviewInput{SourceSelector: "alice@", RelayNodeID: "node-relay"})
+	if err != nil || len(refreshed.SourceDevices) != 2 {
+		t.Fatalf("refreshed selector preview=%+v err=%v", refreshed, err)
 	}
 }
 

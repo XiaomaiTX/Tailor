@@ -2,7 +2,7 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - backend/internal/model/
   - api/openapi/openapi.yaml
@@ -18,7 +18,7 @@ Describes SQLite persistence, shared API contracts, and the Headscale integratio
 ## Data Stores
 
 - **SQLite** is the only local persistent store; `DATABASE_PATH` selects the file.
-- GORM models are auto-migrated at startup. SQLite stores short-lived OIDC login state, hashed Tailor session tokens, Headscale user/device snapshots, relay metadata, applications, source-to-relay assignment ownership, role/application settings, policy revisions, audit logs, and sync state.
+- GORM models are auto-migrated at startup. SQLite stores short-lived OIDC login state, hashed Tailor session tokens, Headscale user/device snapshots, relay metadata, applications, per-device assignment ownership, selector-rule ownership (source selector, Relay node, and exact Relay IP), role/application settings, policy revisions, audit logs, and sync state.
 - Successful Headscale syncs replace the current user snapshot. User records absent from that snapshot are removed so removed users cannot continue logging in through stale email mappings.
 - Device snapshots are marked missing when absent from a successful Headscale sync; rows are retained so historical ownership and references remain inspectable.
 - Policy revision rows contain full before/after policy snapshots and semantic hashes. The service retains the latest 30 successful revisions.
@@ -39,6 +39,7 @@ Describes SQLite persistence, shared API contracts, and the Headscale integratio
 - The policy parser accepts HuJSON comments and trailing commas and changes only the `grants` value. It preserves the rest of the source policy, but comments inside a rewritten `grants` array are not preserved.
 - The product does not own general ACL policy editing and refuses unsafe or ambiguous changes.
 - The authorization canvas reads its visible network snapshot through `GET /graph/all` and submits changed source devices together through `PUT /assignments/batch`; one batch is merged into one complete Policy write. Browser-only node positions and viewport do not add server persistence.
+- The Policy page reads and previews Tailor-owned selector rules through `/policy/selector-rules`; selector writes retain one validated user or group selector and one registered Relay IP. Preview scope hashes bind a write to the current matched-device set. Grant provenance on graph edges contains the matching selectors and a content-derived grant ID.
 
 ## Invariants
 

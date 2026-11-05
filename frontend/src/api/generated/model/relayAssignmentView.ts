@@ -5,6 +5,7 @@
  * Visual Peer Relay Management for Tailscale & Headscale
  * OpenAPI spec version: 1.0.0
  */
+import type { PolicyGrantMatch } from './policyGrantMatch';
 import type { Relay } from './relay';
 import type { RelayAssignmentViewSource } from './relayAssignmentViewSource';
 
@@ -14,4 +15,5 @@ export interface RelayAssignmentView {
   source: RelayAssignmentViewSource;
   editable: boolean;
   warning?: string;
+  grantMatches?: PolicyGrantMatch[];
 }

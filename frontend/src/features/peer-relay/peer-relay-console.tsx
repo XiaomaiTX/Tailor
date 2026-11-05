@@ -55,8 +55,11 @@ import { errorMessage, relayUpdateInput } from "@/features/peer-relay/utils"
 import type {
   BatchAssignmentInput,
   Device,
+  ManagedPolicySelectorRule,
   PeerRelaySettingsInput,
   PolicyRevision,
+  PolicySelectorRuleInput,
+  PolicySelectorRulePreview,
   Relay,
   RelayApplication,
   RelayUpdate,
@@ -99,6 +102,7 @@ const queryKeys = {
   relays: ["peer-relay", "relays"] as const,
   applications: ["peer-relay", "applications"] as const,
   canvasGraph: ["peer-relay", "canvas-graph"] as const,
+  selectorRules: ["peer-relay", "selector-rules"] as const,
   revisions: ["peer-relay", "revisions"] as const,
   audits: ["peer-relay", "audits"] as const,
   settings: ["peer-relay", "settings"] as const,
@@ -133,6 +137,10 @@ export function PeerRelayConsole() {
     null
   )
   const [revisionDetailId, setRevisionDetailId] = useState("")
+  const [selectorRulePreview, setSelectorRulePreview] =
+    useState<PolicySelectorRulePreview>()
+  const [selectorRuleDeleteTarget, setSelectorRuleDeleteTarget] =
+    useState<ManagedPolicySelectorRule | null>(null)
 
   const dashboardQuery = useQuery({
     queryKey: queryKeys.dashboard,
@@ -176,6 +184,11 @@ export function PeerRelayConsole() {
     queryFn: peerRelayApi.revisions,
     enabled: Boolean(isAdmin && page === "policy"),
   })
+  const selectorRulesQuery = useQuery({
+    queryKey: queryKeys.selectorRules,
+    queryFn: peerRelayApi.selectorRules,
+    enabled: Boolean(isAdmin && page === "policy"),
+  })
   const revisionDetailQuery = useQuery({
     queryKey: [...queryKeys.revisions, "detail", revisionDetailId],
     queryFn: () => peerRelayApi.revisionDetail(revisionDetailId),
@@ -204,6 +217,7 @@ export function PeerRelayConsole() {
       queryClient.invalidateQueries({ queryKey: queryKeys.relays }),
       queryClient.invalidateQueries({ queryKey: queryKeys.applications }),
       queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorRules }),
     ])
   }
 
@@ -309,6 +323,41 @@ export function PeerRelayConsole() {
         queryClient.invalidateQueries({ queryKey: queryKeys.revisions }),
         queryClient.invalidateQueries({ queryKey: queryKeys.audits }),
       ])
+    },
+  })
+
+  const selectorRulePreviewMutation = useMutation({
+    mutationFn: peerRelayApi.previewSelectorRule,
+    onSuccess: (result) => setSelectorRulePreview(result),
+  })
+
+  const refreshPolicyManagement = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorRules }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.revisions }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.audits }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+    ])
+  }
+
+  const createSelectorRuleMutation = useMutation({
+    mutationFn: (input: PolicySelectorRuleInput) =>
+      peerRelayApi.createSelectorRule(input),
+    onSuccess: async () => {
+      setSelectorRulePreview(undefined)
+      await refreshPolicyManagement()
+      setToast(t("relay.policy.selectorRuleSaved"))
+    },
+  })
+
+  const deleteSelectorRuleMutation = useMutation({
+    mutationFn: ({ id, basePolicyHash }: { id: string; basePolicyHash: string }) =>
+      peerRelayApi.deleteSelectorRule(id, basePolicyHash),
+    onSuccess: async () => {
+      setSelectorRuleDeleteTarget(null)
+      await refreshPolicyManagement()
+      setToast(t("relay.policy.selectorRuleRemoved"))
     },
   })
 
@@ -511,11 +560,31 @@ export function PeerRelayConsole() {
         devices={devices}
         relays={relays}
         audits={auditsQuery.data ?? []}
+        selectorRules={selectorRulesQuery.data ?? []}
+        selectorRulesLoading={selectorRulesQuery.isLoading}
+        selectorRulesError={selectorRulesQuery.error}
+        selectorPreview={selectorRulePreview}
+        selectorPreviewPending={selectorRulePreviewMutation.isPending}
+        selectorMutationPending={
+          createSelectorRuleMutation.isPending || deleteSelectorRuleMutation.isPending
+        }
+        selectorMutationError={
+          createSelectorRuleMutation.error ??
+          deleteSelectorRuleMutation.error ??
+          selectorRulePreviewMutation.error
+        }
+        policyWritesEnabled={dashboard?.policyWritesEnabled ?? false}
         isLoading={revisionsQuery.isLoading || auditsQuery.isLoading}
         t={t}
         locale={locale}
         onRollback={setRollbackTarget}
         onViewRevision={(revision) => setRevisionDetailId(revision.id)}
+        onPreviewSelectorRule={(input) => {
+          setSelectorRulePreview(undefined)
+          selectorRulePreviewMutation.mutate(input)
+        }}
+        onCreateSelectorRule={(input) => createSelectorRuleMutation.mutate(input)}
+        onDeleteSelectorRule={setSelectorRuleDeleteTarget}
       />
     ),
     settings: (
@@ -765,6 +834,24 @@ export function PeerRelayConsole() {
           error={rollbackMutation.error}
           onCancel={() => setRollbackTarget(null)}
           onConfirm={() => rollbackMutation.mutate(rollbackTarget.id)}
+        />
+      ) : null}
+
+      {selectorRuleDeleteTarget ? (
+        <ConfirmDialog
+          title={t("relay.policy.removeSelectorRule")}
+          description={`${selectorRuleDeleteTarget.sourceSelector} → ${selectorRuleDeleteTarget.relaySelector}`}
+          confirmLabel={t("relay.policy.removeSelectorRule")}
+          cancelLabel={t("relay.policy.cancel")}
+          isPending={deleteSelectorRuleMutation.isPending}
+          error={deleteSelectorRuleMutation.error}
+          onCancel={() => setSelectorRuleDeleteTarget(null)}
+          onConfirm={() =>
+            deleteSelectorRuleMutation.mutate({
+              id: selectorRuleDeleteTarget.id,
+              basePolicyHash: dashboard?.policyHash ?? "",
+            })
+          }
         />
       ) : null}
 

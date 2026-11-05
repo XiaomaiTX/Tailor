@@ -2,11 +2,14 @@ import { customFetch } from "@/api/http"
 import {
   cancelApplication,
   cancelRelay,
+  createPolicySelectorRule,
   createApplication,
+  deletePolicySelectorRule,
   getCanvasGraph,
   getGraph,
   getPeerRelaySettings,
   getPolicyRevisionDetail,
+  listPolicySelectorRules,
   getRelayDashboard,
   getRelayMe,
   listApplications,
@@ -17,6 +20,7 @@ import {
   registerRelay,
   reviewApplication,
   rollbackPolicyRevision,
+  previewPolicySelectorRule,
   syncHeadscale,
   updateAssignments,
   updateAssignmentsBatch,
@@ -37,6 +41,11 @@ import type {
   ListRelaysParams,
   PolicyRevision,
   PolicyRevisionDetail,
+  ManagedPolicySelectorRule,
+  PolicySelectorRuleInput,
+  PolicySelectorRuleMutationResult,
+  PolicySelectorRulePreview,
+  PolicySelectorRulePreviewInput,
   PeerRelaySettings,
   PeerRelaySettingsInput,
   Relay,
@@ -87,6 +96,18 @@ export const peerRelayApi = {
   },
   async revisions() {
     return (await listPolicyRevisions()).data as PolicyRevision[]
+  },
+  async selectorRules() {
+    return (await listPolicySelectorRules()).data as ManagedPolicySelectorRule[]
+  },
+  async previewSelectorRule(input: PolicySelectorRulePreviewInput) {
+    return (await previewPolicySelectorRule(input)).data as PolicySelectorRulePreview
+  },
+  async createSelectorRule(input: PolicySelectorRuleInput) {
+    return (await createPolicySelectorRule(input)).data as PolicySelectorRuleMutationResult
+  },
+  async deleteSelectorRule(id: string, basePolicyHash: string) {
+    return (await deletePolicySelectorRule(id, { basePolicyHash })).data as PolicySelectorRuleMutationResult
   },
   async revisionDetail(id: string) {
     return (await getPolicyRevisionDetail(id)).data as PolicyRevisionDetail

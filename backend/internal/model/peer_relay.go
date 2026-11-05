@@ -81,6 +81,18 @@ type RelayAssignment struct {
 
 func (RelayAssignment) TableName() string { return "relay_assignments" }
 
+type SelectorPolicyRule struct {
+	ID             string    `gorm:"primaryKey;size:36" json:"id"`
+	SourceSelector string    `gorm:"size:255;not null;uniqueIndex:idx_selector_policy_rule_pair" json:"sourceSelector"`
+	RelayNodeID    string    `gorm:"size:120;not null;index" json:"relayNodeId"`
+	RelaySelector  string    `gorm:"size:128;not null;uniqueIndex:idx_selector_policy_rule_pair" json:"relaySelector"`
+	CreatedBy      string    `gorm:"size:255;not null" json:"createdBy"`
+	CreatedAt      time.Time `gorm:"not null" json:"createdAt"`
+	UpdatedAt      time.Time `gorm:"not null" json:"updatedAt"`
+}
+
+func (SelectorPolicyRule) TableName() string { return "selector_policy_rules" }
+
 type PolicyRevision struct {
 	ID         string    `gorm:"primaryKey;size:36" json:"id"`
 	Actor      string    `gorm:"size:255;not null;index" json:"actor"`

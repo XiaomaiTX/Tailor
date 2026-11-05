@@ -153,6 +153,30 @@ func RegisterPeerRelayRoutes(engine *gin.Engine, peer *service.PeerRelayService)
 		value, err := peer.UpdateAssignmentsBatch(c.Request.Context(), middleware.Principal(c.Request.Context()), body)
 		writePeerResponse(c, value, err)
 	})
+	group.GET("/policy/selector-rules", func(c *gin.Context) {
+		value, err := peer.SelectorPolicyRules(c.Request.Context(), middleware.Principal(c.Request.Context()))
+		writePeerResponse(c, value, err)
+	})
+	group.POST("/policy/selector-rules/preview", func(c *gin.Context) {
+		var body service.SelectorRulePreviewInput
+		if !bindPeerJSON(c, &body) {
+			return
+		}
+		value, err := peer.PreviewSelectorRule(c.Request.Context(), middleware.Principal(c.Request.Context()), body)
+		writePeerResponse(c, value, err)
+	})
+	group.POST("/policy/selector-rules", func(c *gin.Context) {
+		var body service.SelectorRuleInput
+		if !bindPeerJSON(c, &body) {
+			return
+		}
+		value, err := peer.CreateSelectorRule(c.Request.Context(), middleware.Principal(c.Request.Context()), body)
+		writePeerResponse(c, value, err)
+	})
+	group.DELETE("/policy/selector-rules/:id", func(c *gin.Context) {
+		value, err := peer.DeleteSelectorRule(c.Request.Context(), middleware.Principal(c.Request.Context()), c.Param("id"), c.Query("basePolicyHash"))
+		writePeerResponse(c, value, err)
+	})
 	group.POST("/sync", func(c *gin.Context) {
 		if err := peer.SyncNow(c.Request.Context(), middleware.Principal(c.Request.Context())); err != nil {
 			writePeerResponse(c, nil, err)

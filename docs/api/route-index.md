@@ -2,7 +2,7 @@
 status: active
 doc_type: api
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - api/openapi/openapi.yaml
   - backend/internal/router/router.go
@@ -41,6 +41,10 @@ Stable HTTP routes under `/api/v1`. Health probes and OIDC entry/callback routes
 | GET | `/graph?sourceNodeId=` | View source device and relay authorization edges | Tailor session; admin or source owner | Single-device compatibility API |
 | PUT | `/assignments` | Merge and commit graph edits to Headscale Policy | Admin or source owner; Policy writes enabled | Single-device compatibility API |
 | PUT | `/assignments/batch` | Validate changed source devices together and commit one merged Policy update | Admin or source owner per changed device; Policy writes enabled | Authorization canvas |
+| GET | `/policy/selector-rules` | List Tailor-owned user/group selector rules with current matching devices | Admin | Policy management |
+| POST | `/policy/selector-rules/preview` | Preview one user/group selector to one registered Relay and return policy/scope hashes | Admin | Policy management |
+| POST | `/policy/selector-rules` | Write one user/group selector rule without expanding the source selector | Admin; Policy writes enabled; preview hashes must match | Policy management |
+| DELETE | `/policy/selector-rules/{id}?basePolicyHash=` | Remove one exact Tailor-owned selector grant or clear its orphaned ownership row | Admin; Policy writes enabled when a Policy grant must be removed | Policy management |
 | POST | `/sync` | Trigger immediate Headscale sync | Admin | Console |
 | GET | `/policy/revisions` | List recent policy revisions | Admin | Console |
 | GET | `/policy/revisions/{id}` | Read full before/after policy snapshots | Admin | Console |
@@ -55,6 +59,7 @@ Stable HTTP routes under `/api/v1`. Health probes and OIDC entry/callback routes
 - Responses use JSON; errors use `application/problem+json` with `type`, `title`, `status`, optional `detail`, and `instance`.
 - Peer Relay request decoding is strict, rejects unknown fields, and caps JSON bodies at 1 MiB. The generated strict Go handler remains responsible for health and retained examples; Peer Relay routes are bound in `internal/handler/peer_relay.go` and use the service layer.
 - `/graph/all` returns one device node per visible Headscale device, marks registered Peer Relay roles on those nodes, and scopes source nodes by the caller's server-enforced permissions. `/assignments/batch` accepts only changed sources with their complete desired Relay ID sets and one shared Policy hash; the service validates the whole request before applying one Policy document update.
+- `GET /policy/selector-rules` returns Tailor-owned user/group rules and their current source-device matches. Preview returns the exact registered Relay IPv4 target, current source set, Policy hash, and scope hash; create must submit both hashes so changes to Policy or the matched device set require a new preview. Selector writes preserve the source selector and are administrator-only.
 - Authorization canvas node positions and viewport remain in browser local storage, isolated by Tailor username and layout version. Assignment drafts are in memory only.
 - `page`/`pageSize` pagination applies to retained Example endpoints. Peer Relay collection responses are currently bounded by the data returned and are not paginated.
 - Times use ISO 8601 `date-time`.

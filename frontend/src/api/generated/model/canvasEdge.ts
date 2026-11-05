@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { CanvasEdgeSource } from './canvasEdgeSource';
+import type { PolicyGrantMatch } from './policyGrantMatch';
 
 export interface CanvasEdge {
   sourceNodeId: string;
@@ -13,4 +14,5 @@ export interface CanvasEdge {
   source: CanvasEdgeSource;
   editable: boolean;
   warning?: string;
+  grantMatches?: PolicyGrantMatch[];
 }

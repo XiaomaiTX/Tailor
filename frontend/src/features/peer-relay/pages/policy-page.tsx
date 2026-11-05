@@ -1,11 +1,17 @@
-import { Activity, Clock3, GitBranch } from "lucide-react"
+import { useState } from "react"
+import { Activity, Clock3, GitBranch, Plus, Trash2 } from "lucide-react"
 import type {
   Device,
+  ManagedPolicySelectorRule,
   PolicyRevision,
   PolicyRevisionDetail,
+  PolicySelectorRuleInput,
+  PolicySelectorRulePreview,
+  PolicySelectorRulePreviewInput,
   Relay,
 } from "@/api/generated/model"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   EmptyState,
   HashChip,
@@ -22,11 +28,22 @@ export function PolicyPage({
   devices,
   relays,
   audits,
+  selectorRules,
+  selectorRulesLoading,
+  selectorRulesError,
+  selectorPreview,
+  selectorPreviewPending,
+  selectorMutationPending,
+  selectorMutationError,
+  policyWritesEnabled,
   isLoading,
   t,
   locale,
   onRollback,
   onViewRevision,
+  onPreviewSelectorRule,
+  onCreateSelectorRule,
+  onDeleteSelectorRule,
 }: {
   revisions: PolicyRevision[]
   revisionDetail?: PolicyRevisionDetail
@@ -44,12 +61,28 @@ export function PolicyPage({
     result: string
     createdAt: string
   }[]
+  selectorRules: ManagedPolicySelectorRule[]
+  selectorRulesLoading: boolean
+  selectorRulesError?: Error | null
+  selectorPreview?: PolicySelectorRulePreview
+  selectorPreviewPending: boolean
+  selectorMutationPending: boolean
+  selectorMutationError?: Error | null
+  policyWritesEnabled: boolean
   isLoading: boolean
   t: (key: string) => string
   locale: string
   onRollback: (revision: PolicyRevision) => void
   onViewRevision: (revision: PolicyRevision) => void
+  onPreviewSelectorRule: (input: PolicySelectorRulePreviewInput) => void
+  onCreateSelectorRule: (input: PolicySelectorRuleInput) => void
+  onDeleteSelectorRule: (rule: ManagedPolicySelectorRule) => void
 }) {
+  const [sourceSelector, setSourceSelector] = useState("")
+  const [relayNodeId, setRelayNodeId] = useState("")
+  const previewIsCurrent =
+    selectorPreview?.sourceSelector === sourceSelector.trim() &&
+    selectorPreview?.relayNodeId === relayNodeId
   const deviceLabel = (selector: string) => {
     const device = devices.find(
       (item) => item.ipv4 === selector || item.ipv6 === selector
@@ -65,6 +98,158 @@ export function PolicyPage({
 
   return (
     <div className="space-y-5">
+      <section className="border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <p className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground">
+            {t("relay.policy.selectorEyebrow")}
+          </p>
+          <h3 className="mt-1 text-sm font-semibold">
+            {t("relay.policy.selectorRules")}
+          </h3>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-muted-foreground">
+            {t("relay.policy.selectorHelp")}
+          </p>
+        </div>
+        <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="space-y-4">
+            <label className="block text-[10px] font-bold tracking-widest text-muted-foreground" htmlFor="policy-selector-source">
+              {t("relay.policy.sourceSelector")}
+              <Input
+                id="policy-selector-source"
+                value={sourceSelector}
+                onChange={(event) => setSourceSelector(event.target.value)}
+                placeholder="chichu@ 或 group:admins"
+                autoComplete="off"
+                className="mt-2"
+              />
+            </label>
+            <label className="block text-[10px] font-bold tracking-widest text-muted-foreground" htmlFor="policy-selector-relay">
+              {t("relay.policy.targetRelay")}
+              <select
+                id="policy-selector-relay"
+                value={relayNodeId}
+                onChange={(event) => setRelayNodeId(event.target.value)}
+                className="mt-2 h-10 w-full border border-border bg-background px-3 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+              >
+                <option value="">{t("relay.policy.chooseRelay")}</option>
+                {relays
+                  .filter(
+                    (relay) =>
+                      relay.selectable &&
+                      !relay.device.missing &&
+                      Boolean(relay.device.ipv4)
+                  )
+                  .map((relay) => (
+                    <option key={relay.nodeId} value={relay.nodeId}>
+                      {relay.displayName} · {relay.device.ipv4}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                isDisabled={!sourceSelector.trim() || !relayNodeId || selectorPreviewPending || selectorMutationPending}
+                onPress={() => onPreviewSelectorRule({ sourceSelector: sourceSelector.trim(), relayNodeId })}
+              >
+                <Activity />
+                {selectorPreviewPending ? t("relay.policy.previewingScope") : t("relay.policy.previewScope")}
+              </Button>
+              {previewIsCurrent && selectorPreview ? (
+                <Button
+                  size="sm"
+                  isDisabled={!policyWritesEnabled || selectorMutationPending}
+                  onPress={() =>
+                    onCreateSelectorRule({
+                      sourceSelector: selectorPreview.sourceSelector,
+                      relayNodeId: selectorPreview.relayNodeId,
+                      basePolicyHash: selectorPreview.basePolicyHash,
+                      scopeHash: selectorPreview.scopeHash,
+                    })
+                  }
+                >
+                  <Plus />
+                  {selectorMutationPending ? t("relay.policy.savingSelectorRule") : t("relay.policy.createSelectorRule")}
+                </Button>
+              ) : null}
+            </div>
+            {!policyWritesEnabled ? (
+              <p className="text-[10px] text-muted-foreground">{t("relay.editor.writesDisabled")}</p>
+            ) : null}
+            {selectorPreviewPending && !selectorPreview ? <LoadingState t={t} /> : null}
+            {selectorPreview && previewIsCurrent ? (
+              <div className="border border-border p-3">
+                <p className="text-xs font-semibold">
+                  {selectorPreview.sourceSelector} → {selectorPreview.relay.displayName}
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {selectorPreview.relaySelector} · {selectorPreview.sourceDevices.length} {t("relay.policy.currentMatches")}
+                </p>
+                <p className="mt-2 text-[10px] leading-4 text-muted-foreground">{selectorPreview.warning}</p>
+                {selectorPreview.sourceDevices.length ? (
+                  <ul className="mt-2 max-h-36 space-y-1 overflow-auto text-[10px] text-muted-foreground">
+                    {selectorPreview.sourceDevices.map((device) => (
+                      <li key={device.nodeId} className="truncate">
+                        {device.givenName || device.hostname} · {device.username} · {device.ipv4 || device.ipv6}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+            {selectorMutationError ? (
+              <p role="alert" className="text-xs text-destructive">
+                {selectorMutationError.message || t("errors.unknown")}
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-3">
+            {selectorRulesError ? (
+              <p role="alert" className="text-xs text-destructive">
+                {selectorRulesError.message || t("errors.unknown")}
+              </p>
+            ) : selectorRulesLoading ? (
+              <LoadingState t={t} />
+            ) : selectorRules.length === 0 ? (
+              <EmptyState title={t("relay.policy.noSelectorRules")} icon={GitBranch} />
+            ) : (
+              selectorRules.map((rule) => (
+                <div key={rule.id} className="border border-border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold">
+                        {rule.sourceSelector} → {rule.relay?.displayName ?? rule.relaySelector}
+                      </p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {rule.relaySelector} · {rule.sourceDevices.length} {t("relay.policy.currentMatches")}
+                        {rule.targetChanged ? ` · ${t("relay.policy.targetChanged")}` : ""}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${t("relay.policy.removeSelectorRule")}: ${rule.sourceSelector}`}
+                      isDisabled={!rule.canDelete || selectorMutationPending}
+                      onPress={() => onDeleteSelectorRule(rule)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                  {rule.warning ? (
+                    <p className="mt-2 text-[10px] leading-4 text-muted-foreground">{rule.warning}</p>
+                  ) : null}
+                  {rule.sourceDevices.length ? (
+                    <p className="mt-2 truncate text-[10px] text-muted-foreground">
+                      {rule.sourceDevices.map((device) => device.givenName || device.hostname).join(" · ")}
+                    </p>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
       {revisionDetail || revisionDetailLoading || revisionDetailError ? (
         <section className="rounded-none border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
