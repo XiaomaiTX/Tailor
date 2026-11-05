@@ -551,7 +551,7 @@ export function PeerRelayConsole() {
       />
       <SidebarInset className="min-h-svh min-w-0">
         <header className="sticky top-0 z-20 border-b border-border bg-background/90 px-5 backdrop-blur-xl sm:px-8 lg:px-10">
-          <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between gap-4">
+          <div className="flex h-[72px] items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               <SidebarTrigger
                 aria-label={t("relay.sidebar.toggle")}
@@ -604,7 +604,7 @@ export function PeerRelayConsole() {
           </div>
         </header>
 
-        <div className="mx-auto w-full max-w-[1320px] px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
+        <div className="w-full px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
           <div className="mb-7 flex flex-col justify-between gap-4 sm:mb-8 sm:flex-row sm:items-end">
             <div>
               <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground">
