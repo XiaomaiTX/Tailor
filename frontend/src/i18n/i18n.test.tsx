@@ -21,7 +21,7 @@ describe("i18n", () => {
     )
     expect(screen.getByText("Console")).toBeInTheDocument()
     expect(document.documentElement.lang).toBe("en-US")
-    expect(document.title).toBe("Peer Relay Manager")
+    expect(document.title).toBe("Tailor")
   })
 
   it("缺失键返回键名", () => {

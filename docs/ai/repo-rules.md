@@ -2,7 +2,7 @@
 status: active
 doc_type: agent-rules
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - AGENTS.md
   - docs/README.md
@@ -62,7 +62,7 @@ source_of_truth:
 
 ## Project Intent
 
-本仓库实现 Peer Relay Manager：基于单个 Headscale 实例管理 Peer Relay 注册、申请审批与可视化 Policy Grants。工程链路仍遵循“OpenAPI 契约 + 分层 Go 后端 + 生成的 React 客户端 + React SPA”。
+本仓库实现 Tailor（Visual Peer Relay Management for Tailscale & Headscale）：基于单个 Headscale 实例管理 Peer Relay 注册、申请审批与可视化 Policy Grants。工程链路仍遵循“OpenAPI 契约 + 分层 Go 后端 + 生成的 React 客户端 + React SPA”。
 
 当前项目事实：
 

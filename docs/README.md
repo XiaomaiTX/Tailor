@@ -2,7 +2,7 @@
 status: active
 doc_type: index
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - AGENTS.md
   - docs/ai/repo-rules.md
@@ -13,14 +13,16 @@ source_of_truth:
 
 ## 目的
 
-`docs/` 是 Peer Relay Manager 的 canonical 文档树，用来把仓库规则、当前架构、接口契约、功能行为、人类操作指南、未来规划和模板明确分层，避免 AI 与人类从多个入口读取互相冲突的信息。
+`docs/` 是 Tailor 的 canonical 文档树，用来把仓库规则、当前架构、接口契约、功能行为、人类操作指南、未来规划和模板明确分层，避免 AI 与人类从多个入口读取互相冲突的信息。
 
 根目录 `README.md` 是 onboarding 入口，但不是工程规则源。  
 代理入口文件如 `AGENTS.md` / `CLAUDE.md` 只做规则委托，不单独承载规则正文。
 
 ## 项目定位
 
-Peer Relay Manager 为单个 Headscale 实例提供 Peer Relay 注册、申请审批和 Policy Grants 可视化管理。技术栈为 Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件。`/examples` 是保留的生成式 CRUD 示例 API，不是主业务能力。
+**Visual Peer Relay Management for Tailscale & Headscale**
+
+Tailor 通过单个 Headscale 实例，为 Tailscale 网络提供 Peer Relay 注册、申请审批和 Policy Grants 可视化管理。技术栈为 Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件。`/examples` 是保留的生成式 CRUD 示例 API，不是主业务能力。
 
 ## Authority Order
 

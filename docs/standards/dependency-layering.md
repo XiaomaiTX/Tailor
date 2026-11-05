@@ -12,7 +12,7 @@ source_of_truth:
 
 ## Scope
 
-本标准定义 Peer Relay Manager 的依赖方向约束。
+本标准定义 Tailor 的依赖方向约束。
 
 ## Core Rule
 

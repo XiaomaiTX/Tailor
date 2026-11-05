@@ -14,7 +14,7 @@ source_of_truth:
 
 ## Scope
 
-Describes the current Peer Relay Manager structure. OpenAPI is the shared API contract; code is the implementation source of truth.
+Describes Tailor's current structure. OpenAPI is the shared API contract; code is the implementation source of truth.
 
 ## Current Implementation
 

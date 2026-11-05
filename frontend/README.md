@@ -1,6 +1,6 @@
 # 前端 SPA
 
-本目录是 Go React Starter 的 React 19 + Vite 单页应用。React Router 负责浏览器路由，React Query 通过 Orval 生成的客户端访问 OpenAPI 契约，Zustand 保存语言和主题偏好。
+本目录是 Tailor 的 React 19 + Vite 单页应用。React Router 负责浏览器路由，React Query 通过 Orval 生成的客户端访问 OpenAPI 契约，Zustand 保存语言和主题偏好。
 
 ## 常用命令
 

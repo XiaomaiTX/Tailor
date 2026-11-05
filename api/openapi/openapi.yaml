@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Peer Relay Manager API
+  title: Tailor API
   version: 1.0.0
-  description: 面向 Headscale 的 Peer Relay 注册审批与授权编排 API。
+  description: Visual Peer Relay Management for Tailscale & Headscale
   x-rate-limit: OIDC entry points and public logout allow 20 requests per network peer per minute; other unsafe API methods allow 60 requests per authenticated user per minute. A 429 response includes Retry-After.
 servers:
   - url: /api/v1

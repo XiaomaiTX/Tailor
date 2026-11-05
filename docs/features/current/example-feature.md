@@ -13,7 +13,7 @@ source_of_truth:
 
 # Example 资源链路
 
-> 这是保留的技术基座 CRUD API，用于演示 OpenAPI → Go 分层 → React 生成客户端链路。当前控制台主流程是 Peer Relay Manager；该示例页面不再作为主导航入口。
+> 这是保留的技术基座 CRUD API，用于演示 OpenAPI → Go 分层 → React 生成客户端链路。当前控制台主流程是 Tailor 的 Peer Relay 管理；该示例页面不再作为主导航入口。
 
 ## Module Purpose
 
@@ -26,7 +26,7 @@ source_of_truth:
 ### User Entry
 
 - API operations are retained under `/api/v1/examples` for the generated-handler example.
-- The application does not currently link the starter Example page from the Peer Relay console.
+- The application does not currently link the starter Example page from Tailor's Peer Relay console.
 
 ### System Entry
 

@@ -1,8 +1,8 @@
 export default {
-  app: { title: "Peer Relay Manager", home: "Console" },
+  app: { title: "Tailor", home: "Console" },
   home: {
-    title: "Peer Relay Manager",
-    body: "Manage Peer Relay registration, review, and device grants for Headscale.",
+    title: "Tailor",
+    body: "Visual Peer Relay Management for Tailscale & Headscale",
   },
   notFound: {
     title: "Page not found",
@@ -27,7 +27,7 @@ export default {
     unknown: "The request failed. Please try again.",
   },
   auth: {
-    title: "Sign in to Peer Relay Manager",
+    title: "Sign in to Tailor",
     description:
       "Continue with your organization's single sign-on. Your verified email must match a Headscale user.",
     login: "Sign in with SSO",
@@ -36,8 +36,9 @@ export default {
       "SSO sign-in failed. Confirm your email is verified and belongs to this Headscale network.",
   },
   relay: {
-    brand: "PEER RELAY",
-    product: "Manager",
+    brand: "TAILOR",
+    product: "Peer Relay Management",
+    tagline: "Visual Peer Relay Management for Tailscale & Headscale",
     environment: "HEADSCALE NETWORK",
     sidebar: {
       administration: "Administration",
@@ -69,7 +70,7 @@ export default {
     },
     overview: {
       eyebrow: "NETWORK OVERVIEW",
-      title: "Peer Relay console",
+      title: "Tailor console",
       description: "Manage relay candidates and device authorizations.",
       devices: "My devices",
       relays: "Relay nodes",

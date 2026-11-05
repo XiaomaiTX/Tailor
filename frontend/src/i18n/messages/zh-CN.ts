@@ -1,8 +1,8 @@
 export default {
-  app: { title: "Peer Relay Manager", home: "控制台" },
+  app: { title: "Tailor", home: "控制台" },
   home: {
-    title: "Peer Relay Manager",
-    body: "管理 Headscale 网络中的 Peer Relay 注册、审批和设备授权。",
+    title: "Tailor",
+    body: "面向 Tailscale 与 Headscale 的可视化 Peer Relay 管理",
   },
   notFound: {
     title: "页面不存在",
@@ -27,7 +27,7 @@ export default {
     unknown: "请求失败，请稍后再试。",
   },
   auth: {
-    title: "登录 Peer Relay Manager",
+    title: "登录 Tailor",
     description:
       "使用组织配置的单点登录继续。登录邮箱必须与 Headscale 用户邮箱匹配。",
     login: "使用 SSO 登录",
@@ -35,8 +35,9 @@ export default {
     failed: "SSO 登录失败。请确认账号邮箱已验证，并且属于当前 Headscale 网络。",
   },
   relay: {
-    brand: "PEER RELAY",
-    product: "中继管理",
+    brand: "TAILOR",
+    product: "Peer Relay 管理",
+    tagline: "面向 Tailscale 与 Headscale 的可视化 Peer Relay 管理",
     environment: "HEADSCALE 网络",
     sidebar: {
       administration: "管理",
@@ -67,7 +68,7 @@ export default {
     },
     overview: {
       eyebrow: "网络概览",
-      title: "Peer Relay 控制台",
+      title: "Tailor 控制台",
       description: "管理中继候选与设备授权。",
       devices: "我的设备",
       relays: "中继节点",

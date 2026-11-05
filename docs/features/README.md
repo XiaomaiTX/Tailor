@@ -12,11 +12,11 @@ source_of_truth:
 
 ## Purpose
 
-`docs/features/current/` describes behavior implemented in the Peer Relay Manager. Architecture and API details belong in their corresponding documentation directories.
+`docs/features/current/` describes behavior implemented in Tailor. Architecture and API details belong in their corresponding documentation directories.
 
 ## Current Features
 
-- [Peer Relay Manager](current/peer-relay-manager.md): Headscale sync, relay registration and applications, approval, authorization graph, policy-safe writes, history, rollback, and audit.
+- [Peer Relay management](current/peer-relay-manager.md): Headscale sync, relay registration and applications, approval, authorization graph, policy-safe writes, history, rollback, and audit.
 - [Example resource flow](current/example-feature.md): retained starter CRUD API used to illustrate the generated handler path; it is not part of the main console workflow.
 
 ## Rules

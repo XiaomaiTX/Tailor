@@ -16,7 +16,7 @@ source_of_truth:
   - frontend/src/components/ui/sidebar.tsx
 ---
 
-# Peer Relay Manager
+# Tailor Peer Relay Management
 
 ## Purpose
 

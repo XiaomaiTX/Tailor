@@ -1,6 +1,8 @@
-# Peer Relay Manager
+# Tailor
 
-面向单个 Headscale 实例的 Peer Relay 管理控制台，覆盖设备同步、Relay 注册与申请审批、设备授权关系图，以及安全合并 Headscale Policy Grants。
+**Visual Peer Relay Management for Tailscale & Headscale**
+
+Tailor 通过单个 Headscale 实例，为 Tailscale 网络提供 Peer Relay 注册、申请审批与授权关系管理，包含设备同步、可视化拓扑和安全合并 Headscale Policy Grants。
 
 ## 启动前
 
@@ -39,7 +41,7 @@ make verify
 
 ## 文档
 
-- [Peer Relay Manager 功能说明](docs/features/current/peer-relay-manager.md)
+- [Peer Relay 管理功能说明](docs/features/current/peer-relay-manager.md)
 - [文档索引](docs/README.md)
 - [接口路由索引](docs/api/route-index.md)
 - [架构与权限边界](docs/architecture/overview.md)

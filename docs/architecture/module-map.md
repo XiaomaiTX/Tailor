@@ -13,7 +13,7 @@ source_of_truth:
 
 ## Scope
 
-Maps the Peer Relay Manager modules and their dependency boundaries. Layering rules are in `docs/standards/dependency-layering.md`.
+Maps Tailor's modules and their dependency boundaries. Layering rules are in `docs/standards/dependency-layering.md`.
 
 ## Backend
 

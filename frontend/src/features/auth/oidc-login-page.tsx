@@ -25,6 +25,9 @@ export function OidcLoginPage() {
         <p className="mt-9 text-[10px] font-bold tracking-[0.2em] text-primary">
           {t("relay.brand")}
         </p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {t("relay.tagline")}
+        </p>
         <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight">
           {t("auth.title")}
         </h1>
