@@ -20,7 +20,7 @@ source_of_truth:
 
 ## Purpose
 
-The console coordinates Peer Relay registration, approval, and device-to-relay grants for one Headscale instance. It manages authorization candidates; it does not force a data path or report which path a client is using.
+Tailor manages Peer Relay registration, application review, and device-to-Relay grants for one Headscale instance. The console reads Headscale Policy to show current grants and can update Tailor-managed Relay grants when policy writes are enabled. It does not start Relay services or report live traffic paths.
 
 ## Roles And Identity
 

@@ -20,9 +20,9 @@ source_of_truth:
 
 ## 项目定位
 
-**Visual Peer Relay Management for Tailscale & Headscale**
+**Peer Relay management for Headscale-managed Tailscale networks**
 
-Tailor 通过单个 Headscale 实例，为 Tailscale 网络提供 Peer Relay 注册、申请审批和 Policy Grants 可视化管理。技术栈为 Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件。`/examples` 是保留的生成式 CRUD 示例 API，不是主业务能力。
+Tailor 连接单个 Headscale 实例，同步 Tailscale 设备与 Policy，并提供 Peer Relay 注册、申请审批和设备授权关系的查看与编辑。Tailor 管理 Policy 中的 Relay Grants；它不会启动设备上的 Relay 服务，也不显示实时流量路径。技术栈为 Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件。`/examples` 是保留的生成式 CRUD 示例 API，不是主业务能力。
 
 ## Authority Order
 

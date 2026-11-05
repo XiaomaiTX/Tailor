@@ -442,18 +442,6 @@ export function PeerRelayConsole() {
               ? t("relay.policy.description")
               : t("relay.settings.description")
 
-  const pageEyebrow =
-    page === "overview"
-      ? t("relay.overview.eyebrow")
-      : page === "editor"
-        ? t("relay.editor.eyebrow")
-        : page === "relays"
-          ? t("relay.relays.eyebrow")
-          : page === "requests"
-            ? t("relay.applications.eyebrow")
-            : page === "policy"
-              ? t("relay.policy.eyebrow")
-              : t("relay.settings.eyebrow")
   const pageHeading =
     page === "overview"
       ? t("relay.overview.title")
@@ -676,10 +664,7 @@ export function PeerRelayConsole() {
         <div className="w-full px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
           <div className="mb-7 flex flex-col justify-between gap-4 sm:mb-8 sm:flex-row sm:items-end">
             <div>
-              <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground">
-                {pageEyebrow}
-              </p>
-              <h2 className="mt-2 font-heading text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">
+              <h2 className="font-heading text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">
                 {pageHeading}
               </h2>
               <p className="mt-2 max-w-[760px] text-sm leading-6 text-muted-foreground">

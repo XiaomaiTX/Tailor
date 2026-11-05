@@ -71,7 +71,6 @@ export function OverviewPage({
           icon={Server}
           label={t("relay.overview.devices")}
           value={isLoading ? "—" : (dashboard?.deviceCount ?? 0)}
-          detail={t("relay.common.allDevices")}
         />
         <MetricCard
           icon={RadioTower}

@@ -1,8 +1,8 @@
 # Tailor
 
-**Visual Peer Relay Management for Tailscale & Headscale**
+**Peer Relay management for Headscale-managed Tailscale networks**
 
-Tailor 通过单个 Headscale 实例，为 Tailscale 网络提供 Peer Relay 注册、申请审批与授权关系管理，包含设备同步、可视化拓扑和安全合并 Headscale Policy Grants。
+Tailor 为 Headscale 管理的 Tailscale 网络提供 Peer Relay 注册、申请审批和设备授权管理。它同步设备与 Headscale Policy，展示设备到 Relay 的授权关系，并在更新 Tailor 管理的 Relay Grants 时保留 Policy 中的其他内容。
 
 ## 启动前
 

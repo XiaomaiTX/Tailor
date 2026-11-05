@@ -100,10 +100,7 @@ export function PolicyPage({
     <div className="space-y-5">
       <section className="border border-border bg-card">
         <div className="border-b border-border px-5 py-4">
-          <p className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground">
-            {t("relay.policy.selectorEyebrow")}
-          </p>
-          <h3 className="mt-1 text-sm font-semibold">
+          <h3 className="text-sm font-semibold">
             {t("relay.policy.selectorRules")}
           </h3>
           <p className="mt-2 max-w-3xl text-xs leading-5 text-muted-foreground">
@@ -184,7 +181,7 @@ export function PolicyPage({
                   {selectorPreview.sourceSelector} → {selectorPreview.relay.displayName}
                 </p>
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  {selectorPreview.relaySelector} · {selectorPreview.sourceDevices.length} {t("relay.policy.currentMatches")}
+                  {selectorPreview.relaySelector} · {t("relay.policy.currentMatches")}{selectorPreview.sourceDevices.length}
                 </p>
                 <p className="mt-2 text-[10px] leading-4 text-muted-foreground">{selectorPreview.warning}</p>
                 {selectorPreview.sourceDevices.length ? (
@@ -222,7 +219,7 @@ export function PolicyPage({
                         {rule.sourceSelector} → {rule.relay?.displayName ?? rule.relaySelector}
                       </p>
                       <p className="mt-1 text-[10px] text-muted-foreground">
-                        {rule.relaySelector} · {rule.sourceDevices.length} {t("relay.policy.currentMatches")}
+                        {rule.relaySelector} · {t("relay.policy.currentMatches")}{rule.sourceDevices.length}
                         {rule.targetChanged ? ` · ${t("relay.policy.targetChanged")}` : ""}
                       </p>
                     </div>
@@ -356,10 +353,7 @@ export function PolicyPage({
         <section className="rounded-none border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <div>
-              <p className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground">
-                {t("relay.policy.eyebrow")}
-              </p>
-              <h3 className="mt-1 text-sm font-semibold">
+              <h3 className="text-sm font-semibold">
                 {t("relay.policy.revisions")}
               </h3>
             </div>
