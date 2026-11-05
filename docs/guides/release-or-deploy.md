@@ -7,74 +7,66 @@ source_of_truth:
   - docker-compose.example.yaml
   - backend/Dockerfile
   - frontend/Dockerfile
-  - Makefile
+  - docs/architecture/auth-and-permissions.md
 ---
 
 # Release Or Deploy Guide
 
-## Purpose
-
-说明 Go React Starter 当前的发布与部署方式。
-
 ## Scope
 
-当前仓库只提供 Docker Compose 一键交付路径。**没有 CI/CD、镜像仓库、生产平台运行手册**；未来需求进入 `docs/specs/draft/`。
+Compose starts the backend and frontend Nginx. The OIDC provider remains an external dependency; register Tailor as its own OIDC client before exposing the console.
 
 ## Preconditions
 
-- 已通过 `docs/standards/pre-completion-checklist.md`
-- 已确认本地或部署机能运行 Docker Compose
-- 已准备 `.env`（从 `.env.example` 复制并按部署环境调整配置）
+- A supported, version-pinned Headscale instance with an API key
+- An OIDC issuer reachable by the backend, plus a Tailor client ID, secret, and exact callback URL registered at that issuer
+- Network rules preventing untrusted clients from reaching backend directly
+- HTTPS from browser to Tailor, and appropriate protected networking to backend
+- For policy writes, verified Headscale database Policy mode and Peer Relay Grants support
 
 ## Steps
 
-### 1. 准备环境变量
+### 1. Configure secrets
 
 ```bash
 cp .env.example .env
-# 按部署环境调整 .env 中的配置
 ```
 
-### 2. 构建并启动
+Set the deployment Headscale URL and API key, OIDC issuer URL, dedicated Tailor client ID, client secret, exact callback URL, database path, and public ports. Inject `OIDC_CLIENT_SECRET` through the deployment secret manager. Keep `PEER_RELAY_POLICY_WRITES=false` initially.
+
+### 2. Build and start
 
 ```bash
-docker compose --env-file .env -f docker-compose.example.yaml up --build
+docker compose --env-file .env -f docker-compose.example.yaml up --build -d
 ```
 
-启动顺序由 Compose 编排：
+### 3. Register and configure OIDC
 
-1. `backend` 启动时按 GORM 模型初始化 SQLite 表结构，`/api/v1/health/live` 通过后视为健康
-2. `frontend` 等待 `backend` 健康后启动，Nginx 监听 `$FRONTEND_PORT`
+Register the configured callback URL (for example, `https://tailor.example.com/api/v1/auth/callback`) for Tailor's dedicated OIDC client. Point the public hostname to the frontend service and use HTTPS. The backend must be able to reach the issuer discovery, token, and JWKS endpoints. Keep the backend on the private Compose/deployment network.
 
-### 3. 注入运行时配置
+### 4. Verify
 
-所有运行时配置通过 `.env` 注入到 Compose：
+- `GET /api/v1/health/live` returns `200`.
+- An unauthenticated business API request returns one `401` Problem response.
+- Complete SSO login with a verified email that uniquely matches a current Headscale user, then reach `/api/v1/relay/me`; verify the mapped role and Headscale username.
+- Check dashboard sync freshness and device counts.
+- Keep policy writes disabled until a review of a real deployment confirms read behavior and Headscale compatibility. Then enable `PEER_RELAY_POLICY_WRITES=true` only if database Policy mode is active.
 
-- `API_PORT`、`LOG_LEVEL`、`CORS_ORIGINS`
-- `DATABASE_PATH`（容器内固定为 `/data/app.db`）
-- `VITE_API_BASE_URL`（前端构建期注入）
-- `FRONTEND_PORT`（Nginx 对外端口）
+## Operational Notes
 
-### 4. 验证发布结果
-
-- `curl http://localhost:$FRONTEND_PORT/` 应返回前端首屏
-- `curl http://localhost:$FRONTEND_PORT/api/v1/health/live` 应返回 `200 { "status": "ok" }`
-- `curl http://localhost:$FRONTEND_PORT/api/v1/health/ready` 在 SQLite 数据库可用时返回 `200`
-
-## Expected Outcome
-
-- 浏览器访问 `http://localhost:$FRONTEND_PORT` 看到前端
-- `/api/v1/examples` 可被访问；`/examples` 页面可完成 CRUD
+- Back up the SQLite database securely; it contains audit history and full policy revision snapshots.
+- Keep the deployment's Headscale version pinned and repeat compatibility checks before upgrading it.
+- Failed syncs preserve the last successful snapshot; surface stale sync state to operators.
+- Policy writes are serialized in one backend process. Do not run multiple backend replicas against the same Headscale policy without a distributed concurrency design.
+- Rollback is guarded by the current policy hash and will refuse to overwrite policy edits made after the latest platform revision.
 
 ## Troubleshooting
 
-- **SQLite 表结构初始化失败导致 backend 不启动**：检查容器日志、数据库文件路径及 `/data` 卷的读写权限
-- **端口占用**：检查 `FRONTEND_PORT`、`API_PORT` 是否被占用
-- **healthcheck 不通过**：`backend` 容器日志中查 Zap 输出与 `request_id`
-- **CORS 拒绝**：浏览器访问域名未列入 `CORS_ORIGINS`
-- **回滚**：当前没有镜像仓库或自动回滚；可通过 `docker compose down`、修复 `.env` / 数据库文件，再次 `up --build` 完成
+- **401 from business routes**: the Tailor session is missing, expired, or maps to a user no longer present in the current Headscale snapshot; sign in again after verifying synchronization.
+- **Login returns to `/login?error=sso`**: verify the callback URL, issuer/client configuration, verified email, and unique current Headscale email mapping.
+- **Find the failed OIDC step**: inspect backend logs for `OIDC callback rejected` and its `stage`. The log contains no token or email values.
+- **503 from business routes**: check SQLite availability, Headscale configuration/availability, and whether policy writes are enabled.
+- **Sync stays stale**: check provider logs without printing credentials, REST API reachability, and the Headscale version's endpoint response shape.
+- **Policy write fails**: confirm database Policy mode, Peer Relay support, current policy hash, and that external automation is not concurrently editing the same policy.
 
-## Notes
-
-- 本地开发流程见 `docs/guides/local-development.md`
-- 安全与凭据边界见 `docs/standards/security-and-secrets.md`
+For local steps see `docs/guides/local-development.md`; security requirements are in `docs/standards/security-and-secrets.md`.

@@ -13,57 +13,54 @@ source_of_truth:
 
 ## Scope
 
-本文件映射 Go React Starter 的主要模块、入口点、关键代码路径与上下游边界。  
-分层方向见 `docs/standards/dependency-layering.md`。
+Maps the Peer Relay Manager modules and their dependency boundaries. Layering rules are in `docs/standards/dependency-layering.md`.
 
-## Module Table
+## Backend
 
-### 后端
+| Module          | Entry                     | Responsibility                                                                 | Dependencies                                          |
+| --------------- | ------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `cmd/api`       | `backend/cmd/api/main.go` | Configuration, migration, dependency assembly, background sync, HTTP lifecycle | config, model, headscale, repository, service, router |
+| `config`        | `config.Load`             | Environment configuration and validation                                       | environment                                           |
+| `router`        | `router.New`              | Gin middleware and route registration                                          | handler, middleware, generated API, service           |
+| `middleware`    | `AuthSession`             | Session enforcement, request ID, security headers, CORS, logging, recovery     | Gin, config, Problem                                  |
+| `handler`       | `RegisterAuthRoutes`      | OIDC login, callback, and local session logout HTTP mapping                    | service, middleware, Problem                          |
+| `handler`       | `RegisterPeerRelayRoutes` | Strict JSON parsing and HTTP/service mapping                                   | service, middleware, Problem                          |
+| `service`       | `OIDCService`             | OIDC validation, verified-email mapping, and opaque session lifecycle          | OIDC provider, OAuth2, repository, model               |
+| `service`       | `PeerRelayService`        | Roles, ownership, sync, lifecycle, graph, policy commit, revision, audit       | repository, Headscale interface, policy, model        |
+| `headscale`     | `NewClient`               | REST provider for Headscale user, node, and Policy APIs                        | net/http, config values                               |
+| `policy`        | `Parse`                   | HuJSON decoding, grant and selector classification, safe grant mutation        | JSON and standard library                             |
+| `repository`    | `NewAuthRepository`       | SQLite login state, session persistence, expiry, and revocation                 | GORM, model                                           |
+| `repository`    | `NewPeerRelayRepository`  | SQLite snapshots and Peer Relay reads/writes                                   | GORM, model                                           |
+| `model`         | Auth and Peer Relay structs | SQLite persistence mapping                                                   | GORM tags                                             |
+| `problem`       | `problem.Write`           | RFC 7807 response writing                                                      | Gin, net/http                                         |
+| `api/generated` | OpenAPI Go output         | Strict generated health/example handler                                        | oapi-codegen                                          |
 
-| 模块 | 主要入口 | 关键代码路径 | 上游依赖 | 下游依赖 |
-| --- | --- | --- | --- | --- |
-| `cmd/api` | `main.go` | `backend/cmd/api` | `config`、`router`、`handler`、`service`、`repository` | 启动 HTTP 服务并优雅退出 |
-| `config` | `config.Load` | `backend/internal/config` | 环境变量 | 进程启动、日志级别、CORS |
-| `router` | `router.New` | `backend/internal/router` | `generated`、`middleware`、`problem`、`config` | Gin 引擎与路由注册 |
-| `middleware` | `RequestID` 等 | `backend/internal/middleware` | `gin`、`problem`、`zap` | 安全头、CORS、访问日志、Recovery |
-| `handler` | `handler.API` | `backend/internal/handler` | `generated`、`service`、`problem`、`model` | HTTP 入参与响应映射 |
-| `service` | `ExampleService` | `backend/internal/service` | `repository`、`model` | 业务规则、输入归一化 |
-| `repository` | `ExampleRepository` | `backend/internal/repository` | `gorm`、`model` | 数据访问 |
-| `model` | `Example` | `backend/internal/model` | GORM struct | 数据库表映射 |
-| `problem` | `problem.Write` | `backend/internal/problem` | `gin`、`net/http` | RFC 7807 错误响应 |
-| `generated`（Go） | `openapi.gen.go` | `backend/internal/api/generated` | `oapi-codegen` 输出 | 严格服务端接口与 DTO |
+## Frontend
 
-### 前端
+| Module                  | Entry                                                     | Responsibility                                                                            | Dependencies                                                    |
+| ----------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `App`                   | `frontend/src/App.tsx`                                    | SPA entry that delegates to the Peer Relay console                                        | React Router, feature entry                                     |
+| `peer-relay console`    | `frontend/src/features/peer-relay/peer-relay-console.tsx` | Query and mutation orchestration, role-aware navigation, shared page shell                | React Query, i18n, feature pages, API wrapper, UI components    |
+| `peer-relay pages`      | `frontend/src/features/peer-relay/pages/`                 | Overview, graph editor, relay directory, applications, policy history, and settings views | Generated models, feature view components, shared UI primitives |
+| `peer-relay components` | `frontend/src/features/peer-relay/components/`            | Application and review dialogs plus Peer Relay display primitives                         | React Aria, shadcn aria-sera UI primitives, feature types       |
+| `api/peer-relay`        | `frontend/src/api/peer-relay.ts`                          | Typed domain-oriented calls around generated client                                       | generated client/models                                         |
+| `api/generated`         | `frontend/src/api/generated/`                             | Orval client, React Query hooks, schemas                                                  | OpenAPI, shared fetch                                           |
+| `i18n`                  | `frontend/src/i18n/`                                      | English and Simplified Chinese messages                                                   | React context                                                   |
+| `components/ui`         | `frontend/src/components/ui/`                             | Shared aria-sera controls and surfaces themed with global CSS tokens                      | React Aria Components, Tailwind, global theme                   |
+| `components`            | `frontend/src/components/`                                | Shared preference controls and theme provider                                             | UI primitives, Zustand                                          |
 
-| 模块 | 主要入口 | 关键代码路径 | 上游依赖 | 下游依赖 |
-| --- | --- | --- | --- | --- |
-| `main.tsx` | `createRoot` | `frontend/src/main.tsx` | React、React Query、Router、ThemeProvider、I18nProvider | SPA 启动 |
-| `app/router` | `router` | `frontend/src/app/router.tsx` | React Router | 页面装配 |
-| `pages` | `ExamplePage` 等 | `frontend/src/pages` | `@/api/generated/client`、`@/i18n`、`@/components/ui` | 用户视图 |
-| `components` | `Button`、`Input`、`ThemeProvider` | `frontend/src/components` | Tailwind、Zustand | 复用 UI 与状态 |
-| `stores` | `preference-store` | `frontend/src/stores` | Zustand | 用户偏好持久化 |
-| `i18n` | `I18nProvider`、`useI18n` | `frontend/src/i18n` | React Context、`messages/*.ts` | 中英文文案 |
-| `api/http` | `customFetch` | `frontend/src/api/http.ts` | fetch | 统一传输层与 Problem 解析 |
-| `api/generated`（React） | `client.ts`、`model/*` | `frontend/src/api/generated` | orval 输出、`api/http` | React Query hooks 与类型 |
-| `lib/problem` | `problemMessageKey` | `frontend/src/lib/problem.ts` | `ApiProblemError` | 错误文案映射 |
+## Contract And Runtime
 
-### 工具与编排
-
-| 模块 | 主要入口 | 关键代码路径 | 上游依赖 | 下游依赖 |
-| --- | --- | --- | --- | --- |
-| OpenAPI | `openapi.yaml` | `api/openapi/openapi.yaml` | Redocly、oapi-codegen、orval | 契约源 |
-| Makefile | `verify` 等 | `Makefile` | Go、pnpm、golangci-lint | 默认验证入口 |
-| Compose | `docker-compose.example.yaml` | 仓库根 | backend、frontend | 容器化编排 |
+| Area             | Source                          | Responsibility                                                                          |
+| ---------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
+| API contract     | `api/openapi/openapi.yaml`      | Request, response, and trust declarations                                               |
+| Go generation    | `api/openapi/oapi-codegen.yaml` | Generate only health and Example handler interfaces                                     |
+| React generation | `frontend/orval.config.ts`      | Generate client for the full contract                                                   |
+| Compose          | `docker-compose.example.yaml`   | Backend/frontend runtime wiring and external OIDC configuration                |
 
 ## Boundaries
 
-- 后端严格分层：`handler -> service -> repository -> model`，反向依赖视为违规
-- 前端调用必须经 `@/api/generated/client`；页面不直接拼装 URL
-- 任何 generated 目录的改动只能通过重新生成产生，不可手改
-- Compose 用 `${VAR}` 占位，所有敏感值来自 `.env`
-
-## Invariants
-
-- 模块划分必须与 `dependency-layering.md` 一致
-- 同一职责不要拆成多个影子模块
-- 新增模块时同步更新本表与相关 architecture / feature 文档
+- Backend flow: `handler -> service -> repository -> model`; Headscale and policy parsing are service adapters.
+- Frontend flow: `App -> feature console -> page/component -> API wrapper -> generated client -> HTTP transport`.
+- Only generated folders are written by generators.
+- Keep the backend on a private network and use HTTPS for deployed browser traffic and OIDC callbacks.

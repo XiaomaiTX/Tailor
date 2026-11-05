@@ -19,9 +19,9 @@ describe("i18n", () => {
         <Probe />
       </I18nProvider>
     )
-    expect(screen.getByText("Home")).toBeInTheDocument()
+    expect(screen.getByText("Console")).toBeInTheDocument()
     expect(document.documentElement.lang).toBe("en-US")
-    expect(document.title).toBe("Go React Starter")
+    expect(document.title).toBe("Peer Relay Manager")
   })
 
   it("缺失键返回键名", () => {

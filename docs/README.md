@@ -13,14 +13,14 @@ source_of_truth:
 
 ## 目的
 
-`docs/` 是 Go React Starter 的 canonical 文档树，用来把仓库级规则、当前架构、接口契约、功能行为、人类操作指南、未来规划和模板明确分层，避免 AI 与人类从多个入口读取互相冲突的信息。
+`docs/` 是 Peer Relay Manager 的 canonical 文档树，用来把仓库规则、当前架构、接口契约、功能行为、人类操作指南、未来规划和模板明确分层，避免 AI 与人类从多个入口读取互相冲突的信息。
 
 根目录 `README.md` 是 onboarding 入口，但不是工程规则源。  
 代理入口文件如 `AGENTS.md` / `CLAUDE.md` 只做规则委托，不单独承载规则正文。
 
 ## 项目定位
 
-Go React Starter 是一个中性、可扩展的 Web 技术基座：Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件共同提供最小可运行链路。`/examples` 是可被替换的端到端示例资源，不是业务能力。
+Peer Relay Manager 为单个 Headscale 实例提供 Peer Relay 注册、申请审批和 Policy Grants 可视化管理。技术栈为 Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn 风格组件。`/examples` 是保留的生成式 CRUD 示例 API，不是主业务能力。
 
 ## Authority Order
 
@@ -101,6 +101,8 @@ Go React Starter 是一个中性、可扩展的 Web 技术基座：Gin、GORM/SQ
 3. `docs/standards/documentation-governance.md`
 4. `docs/ai/repo-rules.md`
 5. 任务对应的架构、接口、功能和操作指南
+
+新接手 Peer Relay 功能时，继续阅读 `docs/features/current/peer-relay-manager.md`、`docs/architecture/auth-and-permissions.md` 和 `docs/guides/release-or-deploy.md`。
 
 ## 文档放置规则
 

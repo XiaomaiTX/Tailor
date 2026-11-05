@@ -13,7 +13,7 @@ source_of_truth:
 
 ## Purpose
 
-给开发者和 AI 一个统一的排查顺序，避免在 Go React Starter 上盲目试错。
+给开发者和 AI 一个统一的排查顺序，避免在 Peer Relay Manager 上盲目试错。
 
 ## Preconditions
 

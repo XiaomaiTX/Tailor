@@ -12,7 +12,7 @@ source_of_truth:
 
 ## Scope
 
-本标准定义 Go React Starter 仓库的验证命令、覆盖要求、允许例外和最小完成验证。  
+本标准定义 Peer Relay Manager 仓库的验证命令、覆盖要求、允许例外和最小完成验证。
 具体测试选择与分层策略见 `docs/guides/testing-guide.md`。
 
 ## Required Tool Versions

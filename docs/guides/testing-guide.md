@@ -13,7 +13,7 @@ source_of_truth:
 
 ## Purpose
 
-帮助开发者快速决定测试放在 Go React Starter 的哪一层，并给出最小应补的验证。
+帮助开发者快速决定测试放在 Peer Relay Manager 的哪一层，并给出最小应补的验证。
 
 ## Preconditions
 

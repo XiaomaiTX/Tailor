@@ -1,56 +1,46 @@
-# Go React Starter
+# Peer Relay Manager
 
-Go React Starter 是一个中性、可扩展的 Web 技术基座：Gin、GORM/SQLite、Zap、OpenAPI、React、React Query、Tailwind 与 shadcn/ui 共同提供最小可运行链路。
+面向单个 Headscale 实例的 Peer Relay 管理控制台，覆盖设备同步、Relay 注册与申请审批、设备授权关系图，以及安全合并 Headscale Policy Grants。
 
-## 首次启动
+## 启动前
+
+部署需要准备：
+
+- 单个 Headscale 实例的 REST API 地址和 API Key
+- 一个支持 OIDC 的身份提供方，并为 Tailor 注册独立的 Client ID、Client Secret 和回调地址
+- SQLite 可写目录
+- 如需提交 Policy，Headscale 必须使用 database Policy 模式；写入功能默认关闭
+
+不要把 Headscale API Key 或 OIDC Client Secret 放进浏览器配置。Tailor 使用已验证的 OIDC 邮箱唯一匹配 Headscale 用户邮箱；Headscale Policy Groups 仍控制平台角色。
+
+## Compose 部署示例
 
 ```bash
 cp .env.example .env
-docker compose up --build
+# 编辑 .env：填写 Headscale 凭据、OIDC Issuer/Client 参数和部署配置
+docker compose --env-file .env -f docker-compose.example.yaml up --build
 ```
 
-浏览器访问 `http://localhost:8080`。后端启动时会按 GORM 模型自动创建或补充 SQLite 表结构；数据库文件保存在仓库根目录的 `data/app.db`。
+Compose 提供 backend 与前端 Nginx。请在 IdP 中将 Tailor 配置为独立 OIDC Client，登记 `OIDC_REDIRECT_URL`，并确保浏览器通过 HTTPS 访问 Tailor。
 
 ## 本地开发
 
-SQLite 会使用本地文件，无需单独启动数据库服务。`.env` 示例将数据库文件设为 `backend/data/app.db`（后端命令的工作目录是 `backend/`）。首次本地开发先安装前端依赖：
-
-```powershell
-cd frontend
-pnpm install --frozen-lockfile
-```
-
-后端使用 [Air](https://github.com/air-verse/air) 实现热重载，首次使用需安装：
-
-```bash
-go install github.com/air-verse/air@v1.65.1
-```
-
-安装后确认 `$(go env GOPATH)/bin` 已加入 `PATH`，再用 `air -v` 验证。然后在两个终端分别启动服务：
-
-```powershell
-# 终端一：后端
-make backend-dev
-```
-
-```powershell
-# 终端二：前端
-cd frontend
-pnpm dev
-```
-
-修改 Go 源码后 Air 会自动重新编译并重启后端；`.env` 变更后重启 Air 即可重新读取。前端由 Vite 提供热更新，与后端互不影响。
+安装 [Go 1.27.3](backend/go.mod)、可用 C 编译器、Node.js 24.x 和 pnpm，然后按 [本地开发指南](docs/guides/local-development.md) 启动。需要 Headscale 访问和有效 OIDC 配置后，业务控制台才能正常使用。
 
 ## 常用命令
 
 ```bash
 make openapi-lint
 make generate
-make generate-check
-make backend-storage-test
+make backend-build
+make frontend-build
 make verify
 ```
 
-`make verify` 是本地默认验证命令，不包含 Docker Compose 烟测；`make backend-storage-test` 使用临时 SQLite 文件，不需要 Docker。若 Compose 无法启动，先确认端口未占用、Docker Desktop 已运行，以及本地数据目录的权限正确。
+## 文档
 
-更多说明见 [文档索引](docs/README.md)。
+- [Peer Relay Manager 功能说明](docs/features/current/peer-relay-manager.md)
+- [文档索引](docs/README.md)
+- [接口路由索引](docs/api/route-index.md)
+- [架构与权限边界](docs/architecture/overview.md)
+- [发布与部署](docs/guides/release-or-deploy.md)

@@ -2,10 +2,12 @@
 status: active
 doc_type: architecture
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
-  - backend/internal/router/router.go
-  - backend/internal/middleware/
+  - backend/internal/middleware/auth_session.go
+  - backend/internal/service/oidc.go
+  - backend/internal/service/peer_relay.go
+  - backend/internal/config/config.go
   - api/openapi/openapi.yaml
 ---
 
@@ -13,40 +15,44 @@ source_of_truth:
 
 ## Scope
 
-本文件说明当前认证、授权与访问控制边界。  
-**当前项目没有身份认证**，所有 API 默认公开。本文件主要任务是明确这一事实，并指出未来加入认证时必须同步的边界。
+Describes the current identity trust boundary and server-enforced Peer Relay permissions.
 
-## Current Model
+## Identity Integration
 
-- 认证方式：**无**
-- 角色或权限模型：**无**
-- 匿名访问策略：所有 `/api/v1/*` 路由对任何能访问后端的客户端公开
-- 高风险操作保护方式：当前不存在需要授权的高风险操作；`DELETE /examples/{id}` 等写操作也无访问控制
+Tailor is an OIDC client. Each deployment configures one external issuer and registers a dedicated Tailor client with its own client ID, client secret, and redirect URI. The application uses the authorization-code flow with PKCE, state, and nonce. The callback verifies the ID token's signature, issuer, audience, expiration, and nonce, then requires a verified email claim.
 
-## What Is Not Access Control
+The verified email is normalized and matched case-insensitively to exactly one email in the current synchronized Headscale users. Missing, unverified, unmatched, or ambiguous emails are denied. The resulting Headscale user ID is stored in the server-side SQLite session; each business request resolves that ID to the current Headscale username before entering service authorization.
 
-以下机制只是传输或浏览器层保护，**不能视为访问控制**：
+`GET /api/v1/auth/login` starts OIDC login, `GET /api/v1/auth/callback` validates the provider response and creates a session, and `POST /api/v1/auth/logout` revokes the local Tailor session. The session cookie is opaque, `HttpOnly`, `SameSite=Lax`, and `Secure` when the configured redirect uses HTTPS. The browser never receives the ID token, access token, or Headscale API key. Logout does not end the IdP session. Origin checks protect unsafe cookie-authenticated requests, and process-local rate limits bound OIDC entry points and authenticated mutations.
 
-- `middleware.CORS`：仅响应浏览器同源策略；`CORS_ORIGINS` 控制哪些 Origin 可以从浏览器跨域调用，攻击者可绕过
-- `middleware.SecurityHeaders`：设置 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Content-Security-Policy`，是浏览器内容保护
-- `middleware.Recovery` / `RequestID`：运行时稳定性与可观测性，与权限无关
+OIDC configuration is environment-managed: `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and `OIDC_REDIRECT_URL` are required. Register Tailor as a separate client at the same IdP Headscale may use; Tailor does not reuse Headscale's OAuth client or token. Business requests require a valid Tailor session; only `/api/v1/health/live` and `/api/v1/health/ready` are public. The authentication middleware aborts the Gin chain after writing an error response.
 
-## Enforcement Points
+## Roles And Enforcement
 
-当前不存在服务端权限决策点。OpenAPI 中 `security: []` 显式声明接口无认证。
+The service derives roles from the current Headscale policy `groups` map plus server configuration:
 
-## Permission Boundaries
+| Role | Source | Permissions |
+| --- | --- | --- |
+| Admin | configured admin groups (default `group:relay-admin`) or `PEER_RELAY_BOOTSTRAP_ADMINS` | Manage settings, relays, and all eligible device graphs; review; sync; inspect all applications, revisions, and audit |
+| Reviewer | configured reviewer groups (default `group:relay-reviewer`); admins are also reviewers | Inspect applications and approve/reject requests; admins can optionally delegate Relay management and all-device graph editing |
+| Applicant | `PEER_RELAY_APPLICANT_MODE=all` (default), membership in configured applicant groups when `groups`, or disabled | Apply for an owned untagged device, inspect own requests, and cancel a pending request |
+| Regular user | current Headscale user without elevated groups | Inspect own devices; edit an owned untagged device graph only when self-service authorization is enabled and Policy writes are enabled |
 
-- 不存在；任何接入认证后的"谁能读 / 谁能写"边界必须在该改动中新增，并落到本文件
+User and device ownership are resolved against synchronized Headscale IDs and node snapshots. Regular users cannot use a client-supplied owner field to access another user's devices. Tagged devices are admin-managed. Admin and reviewer checks are performed in the service, not inferred from UI visibility. Delegated reviewers who can manage relays but cannot edit all devices may register only their own devices. The self-service switch restricts ordinary users; admins and explicitly delegated reviewers retain their respective management permissions.
+
+## Policy And Relay Boundaries
+
+- Relay registration, application review, graph edits, sync, revision history, rollback, and audit routes require a valid OIDC-backed Tailor session.
+- Platform roles continue to come from Headscale Policy Groups and server configuration; OIDC `groups` claims are not used.
+- Policy writes are additionally disabled unless `PEER_RELAY_POLICY_WRITES=true`.
+- Headscale API credentials are backend-only. The React app never receives the API key.
+- Non-platform policy grants, unknown selectors, inherited relationships, and duplicate ambiguous exact grants are not silently rewritten.
+- Rollback is refused if the current live policy differs from the latest successful platform revision.
+- CORS and browser security headers are not authorization controls.
 
 ## Invariants
 
-- 权限必须在可信执行边界（服务端中间件或 service 层）强制执行
-- UI / 客户端侧权限逻辑只能作为 UX 辅助，不能作为唯一保护
-- 涉及权限变化时必须同步更新：
-  1. 本文件
-  2. `docs/api/conventions.md` 的 Boundary Type 与 trust model
-  3. `docs/api/route-index.md` 中受影响接口的"Auth / Trust Boundary"列
-  4. 相关 feature 文档（如 `docs/features/current/example-feature.md`）
-  5. `docs/standards/security-and-secrets.md` 的"Current Posture"
-  6. 行为级测试覆盖权限决策点
+- All business API routes remain inaccessible without a valid server-side session mapped to a current Headscale user.
+- Authorization is checked in middleware and service layers; frontend permission checks are UX only.
+- Any identity or permission change must update this document, API trust contracts, feature behavior documentation, and an appropriate behavior-level test.
+- See `docs/standards/security-and-secrets.md` for credential handling and `docs/features/current/peer-relay-manager.md` for feature behavior.

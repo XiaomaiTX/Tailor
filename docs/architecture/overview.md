@@ -14,52 +14,41 @@ source_of_truth:
 
 ## Scope
 
-本文件描述 Go React Starter 的整体结构，只记录已实现事实。  
-未实现设计写入 `docs/specs/draft/`。
-
-## Project Intent
-
-Go React Starter 是一个中性、可扩展的 Web 技术基座。Go API 与 React SPA 共同提供最小可运行链路，OpenAPI 是跨端契约的单一来源。`/examples` 是可被替换的端到端示例资源，不是业务能力。
+Describes the current Peer Relay Manager structure. OpenAPI is the shared API contract; code is the implementation source of truth.
 
 ## Current Implementation
 
-- 项目类型：Web 全栈基座（Go API + React SPA）
-- 后端运行形态：单进程 HTTP 服务，监听 `:$API_PORT`（默认 8080）
-- 前端运行形态：Vite 开发服务器（本地）或 Nginx 静态资源 + 反向代理（容器）
-- 主要技术栈：
-  - Go 1.27.3、Gin、GORM、SQLite、Zap
-  - React 19、Vite、React Query、React Router、Tailwind、shadcn 风格组件、Zustand
-  - OpenAPI 3.0.3、oapi-codegen（Go 服务端）、orval（React 客户端）
-- 主要模块：`config`、`router`、`handler`、`service`、`repository`、`model`、`middleware`、`problem`
-- 容器化：`docker-compose.example.yaml` 启动 backend、frontend；SQLite 文件通过共享数据卷持久化
+- Product: single-instance Headscale Peer Relay registration, approval, and grant management console.
+- Backend: Go 1.27.3, Gin, GORM/SQLite, Zap; one HTTP process with a background Headscale synchronization scheduler.
+- Frontend: React 19, Vite, React Query, React Router, Tailwind, shadcn-style components, Zustand, and i18n.
+- API contract: OpenAPI 3.0.3. React API client and models are generated from the contract. The generated Go strict handler remains for health and retained Example routes; a dedicated Gin adapter binds Peer Relay operations.
+- Authentication: Tailor uses external OIDC and maps a verified email to one current Headscale user, then authorizes business requests through a server-side SQLite session.
+- Persistence: SQLite for authentication states and sessions, Headscale snapshots, relay registrations, applications, assignment ownership, policy revisions, audit, and sync status.
+- Deployment example: Compose runs backend plus frontend Nginx; production configures a dedicated Tailor OIDC client, uses HTTPS, and keeps the backend on a private network.
 
 ## Subsystems
 
-- **后端 API**：`backend/internal/` 下的分层 Go 服务
-- **数据库表结构**：由 `backend/internal/model/` 中的 GORM 模型定义，后端启动时自动创建或补充
-- **前端 SPA**：`frontend/src/`，通过生成的 React Query hooks 调用后端
-- **OpenAPI 契约**：`api/openapi/openapi.yaml`，是跨端类型与客户端的唯一来源
-- **Compose 编排**：`docker-compose.example.yaml`，串联以上组件并定义启动顺序与健康检查
+- **Headscale provider**: REST access and decoding in `backend/internal/headscale/`.
+- **Policy model**: HuJSON parsing, grant classification, safe grant replacement, and semantic hashes in `backend/internal/policy/`.
+- **Business service**: authorization, registration/review lifecycle, graph projection, policy commits, rollback, audit, and sync in `backend/internal/service/peer_relay.go`.
+- **Persistence**: GORM models and repository in `backend/internal/model/peer_relay.go` and `backend/internal/repository/peer_relay.go`.
+- **Frontend console**: `frontend/src/App.tsx` delegates to `frontend/src/features/peer-relay/peer-relay-console.tsx`; each dashboard, relay directory, application, graph editor, policy, and settings view lives in its own feature page module.
 
 ## Key Entry Files
 
-- 后端入口：[backend/cmd/api/main.go](../../backend/cmd/api/main.go)
-- 路由装配：[backend/internal/router/router.go](../../backend/internal/router/router.go)
-- 配置加载：[backend/internal/config/config.go](../../backend/internal/config/config.go)
-- 前端入口：[frontend/src/main.tsx](../../frontend/src/main.tsx)
-- 前端路由：[frontend/src/app/router.tsx](../../frontend/src/app/router.tsx)
-- 契约源：[api/openapi/openapi.yaml](../../api/openapi/openapi.yaml)
-- Compose 示例：[docker-compose.example.yaml](../../docker-compose.example.yaml)
+- Backend entry: [backend/cmd/api/main.go](../../backend/cmd/api/main.go)
+- Route assembly: [backend/internal/router/router.go](../../backend/internal/router/router.go)
+- Peer Relay HTTP adapter: [backend/internal/handler/peer_relay.go](../../backend/internal/handler/peer_relay.go)
+- Headscale provider: [backend/internal/headscale/client.go](../../backend/internal/headscale/client.go)
+- Policy document adapter: [backend/internal/policy/document.go](../../backend/internal/policy/document.go)
+- Frontend SPA entry: [frontend/src/App.tsx](../../frontend/src/App.tsx)
+- Peer Relay console: [frontend/src/features/peer-relay/peer-relay-console.tsx](../../frontend/src/features/peer-relay/peer-relay-console.tsx)
+- Contract: [api/openapi/openapi.yaml](../../api/openapi/openapi.yaml)
 
 ## Invariants
 
-- OpenAPI 是契约单一来源；任何接口变化先改 `api/openapi/openapi.yaml`，再 `make generate`
-- 生成目录（`backend/internal/api/generated/`、`frontend/src/api/generated/`）不可手改
-- 业务规则只放在 `service` 层；handler / page / repository 不承担业务规则
-- 错误响应必须经过 `internal/problem`，统一为 RFC 7807 风格 `application/problem+json`
-- 当前没有身份认证；任何接入认证的改动必须同步更新 `auth-and-permissions.md` 与 `api/conventions.md`
-
-## Notes
-
-- 若整体结构变化，同步更新 `module-map.md` 和 `runtime-and-startup.md`
-- 接口契约变化按 `docs/ai/repo-rules.md` 的 Contract Change Order 处理
+- Business rules stay in service, never only in the UI or HTTP adapter.
+- Backend authorization checks identity and device ownership; client-controlled owner values are not trusted.
+- Policy commits re-read the live policy, use a base hash, mutate only grants, and verify the write by reading it back.
+- API keys remain backend-side, policy writes default off, and unknown grants are retained.
+- See `module-map.md`, `auth-and-permissions.md`, and `docs/features/current/peer-relay-manager.md` for details.

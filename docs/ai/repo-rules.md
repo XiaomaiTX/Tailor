@@ -62,19 +62,17 @@ source_of_truth:
 
 ## Project Intent
 
-本仓库是一个面向 LLM 深度参与的中性 Web 技术基座（Go React Starter），用最小可运行链路演示"OpenAPI 单一契约源 + 分层后端 + 生成客户端 + React SPA"的工作方式，可作为具体业务项目的起点。
+本仓库实现 Peer Relay Manager：基于单个 Headscale 实例管理 Peer Relay 注册、申请审批与可视化 Policy Grants。工程链路仍遵循“OpenAPI 契约 + 分层 Go 后端 + 生成的 React 客户端 + React SPA”。
 
-当前基座事实：
+当前项目事实：
 
-- 项目目标：提供可替换的端到端示例资源（`/examples`）链路，不绑定业务域
-- 技术栈：Go 1.27.3（Gin、GORM、SQLite、Zap）、React 19（Vite、React Query、Tailwind、shadcn 风格组件）、OpenAPI 3.0.3 作为跨端契约源
+- 技术栈：Go 1.27.3（Gin、GORM、SQLite、Zap）、React 19（Vite、React Query、Tailwind、shadcn 风格组件）、OpenAPI 3.0.3
 - 目录结构：`api/openapi`、`backend/{cmd,internal}`、`frontend/src`、`docs`、Compose 示例
-- 核心模块：`config`、`router`、`handler`、`service`、`repository`、`model`、`middleware`、`problem`
-- 权限模型：当前无身份认证；所有接口默认公开
+- 核心模块：`config`、`router`、`handler`、`service`、`repository`、`model`、`middleware`、`problem`、`headscale`、`policy`
+- 身份边界：Tailor 使用外部 OIDC 提供方完成登录，并将唯一匹配的已验证邮箱映射到当前 Headscale 用户；业务 API 使用 SQLite 服务端会话，健康探针公开
 - 接口边界：`/api/v1` JSON HTTP API；详见 `docs/api/conventions.md` 与 `docs/api/route-index.md`
+- Policy 写入默认关闭；仅在确认 Headscale 数据库存储 Policy 模式后配置启用
 - 验证命令：`make verify`；详见 `docs/standards/testing-and-verification.md`
-
-这套结构也可被其他类型项目（C# Windows 客户端、Node.js CLI、服务端工具）复用。复用时应在项目落地阶段替换上述占位事实，并保持本文件定义的权威顺序、上下文边界与完成要求不变。
 
 ## Non-Negotiable Rules
 

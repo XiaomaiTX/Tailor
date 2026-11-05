@@ -2,54 +2,51 @@
 status: active
 doc_type: api
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
   - api/openapi/openapi.yaml
   - backend/internal/router/router.go
-  - docs/architecture/data-and-contracts.md
+  - backend/internal/handler/peer_relay.go
+  - docs/architecture/auth-and-permissions.md
 ---
 
 # API Conventions
 
 ## Scope
 
-本文件描述 Go React Starter 的对外 HTTP API 通用约定。  
-具体接口清单见 `route-index.md`。
+Describes the `/api/v1` HTTP/JSON interface. `route-index.md` lists operations; `api/openapi/openapi.yaml` is the contract source.
 
-## Boundary Type
+## Boundary And Trust
 
-- interface type: HTTP / JSON
-- base path: `/api/v1`
-- authentication / trust model: **无认证**，所有接口公开（详见 `docs/architecture/auth-and-permissions.md`）
-- OpenAPI 权威源：`api/openapi/openapi.yaml`
+- All routes use JSON except empty `204` responses; errors use `application/problem+json`.
+- `/health/live`, `/health/ready`, and the OIDC login/callback endpoints are public. Business routes require the server-side session cookie established by OIDC login.
+- OIDC login starts at `/auth/login`, returns through `/auth/callback`, and ends locally at `/auth/logout`. The backend verifies the provider token and maps a verified email to a unique current Headscale user.
+- Unsafe browser requests require an allowed configured Origin. Session cookies are HTTP-only; Headscale credentials are never part of the HTTP contract or frontend configuration.
+- Headscale API keys are never part of the HTTP contract or frontend configuration.
 
 ## Request And Response Notes
 
-- 请求体与响应体默认 `application/json`；错误响应统一为 `application/problem+json`
-- 输入解析由 `oapi-codegen` 生成的 strict handler 负责；解析失败时 router 的 `ErrorHandler` 写出 `validation` Problem
-- service 层用哨兵错误（`ErrValidation`、`ErrNotFound`）表达业务异常，handler 负责映射到对应 Problem
-- Problem 字段：`type`（URN，形如 `urn:go-react-starter:problem:<kind>`）、`title`、`status`、可选 `detail`、可选 `instance`（自动填充为请求路径）
-- 列表接口分页契约：`page`（≥1，默认 1）、`pageSize`（1–100，默认 20）、响应 `{ page, pageSize, list, total }`，排序 `created_at DESC, id DESC`
-- 时间字段使用 ISO 8601（`date-time`）
+- OpenAPI declares the contract, including the Tailor session cookie security scheme and response schemas.
+- Health and retained Example routes use the generated strict Go handler. Peer Relay routes use a dedicated Gin adapter with a 1 MiB body limit and unknown-field rejection; both call service logic and map errors to shared Problems.
+- Service errors map to validation (`400`), unauthorized (`401`), forbidden (`403`), not found (`404`), conflict (`409`), unavailable (`503`), or internal (`500`) Problems.
+- Example lists use `{ page, pageSize, list, total }`; current Peer Relay collections do not use pagination.
+- Time fields use ISO 8601 `date-time`.
+
+## Generation
+
+- React API client and models are generated from OpenAPI with Orval.
+- Go code generation is configured for `health` and `examples` tags. Peer Relay operations are explicitly excluded from generated Go interfaces and bound by `internal/handler/peer_relay.go` to keep the REST adapter separate from the existing generated starter handler.
+- Keep the generated frontend contract synchronized with the YAML; do not hand-edit generated files.
 
 ## Versioning
 
-- 当前只存在 `/api/v1`
-- 新增破坏性变更应引入 `/api/v2` 并同时维护旧版本，直到调用方迁移完成
-- 非破坏性变更在原路径下进行，无需新建版本
+- Only `/api/v1` currently exists.
+- Breaking changes require a new version while consumers migrate; additive changes stay in v1.
 
 ## Synchronization Requirements
 
-接口变化时必须按以下顺序同步：
-
-1. 更新 `api/openapi/openapi.yaml`（生产方契约）
-2. 运行 `make openapi-lint` 与 `make generate`（重新生成 Go 桩与 React 客户端）
-3. 更新 handler / service / repository 实现（共享 schema 或类型）
-4. 更新前端调用方（消费方）
-5. 更新 `route-index.md` 与相关 feature 文档（文档索引与行为文档）
-6. `make generate-check` 确认无未提交漂移
-
-## Notes
-
-- 任何新增接口都需要在 `route-index.md` 中登记
-- 不要在 handler 或前端页面里复制 Problem 结构，统一使用 `internal/problem` 与生成类型
+1. Update `api/openapi/openapi.yaml`.
+2. Update provider, service, handler, and React call wrapper.
+3. Regenerate React client/model types and Go code only for configured generated tags.
+4. Update `docs/api/route-index.md` and the relevant feature/architecture documents.
+5. Run lint and generation checks where tools are available and record any environment limitation.

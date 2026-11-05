@@ -6,37 +6,59 @@ last_reviewed: 2026-11-04
 source_of_truth:
   - api/openapi/openapi.yaml
   - backend/internal/router/router.go
-  - backend/internal/handler/api.go
+  - backend/internal/handler/peer_relay.go
 ---
 
 # Route Index
 
 ## Scope
 
-本文件登记当前稳定的 HTTP 接口。所有接口都在 `/api/v1` 下，所有接口当前公开（无认证）。
+Stable HTTP routes under `/api/v1`. Health probes and OIDC entry/callback routes are public; business routes require a valid OIDC-backed Tailor session. See `docs/architecture/auth-and-permissions.md`.
 
 ## Interface Table
 
-| Type | Identifier | Purpose | Auth / Trust Boundary | Consumer |
+| Method | Route | Purpose | Auth / Role | Consumer |
 | --- | --- | --- | --- | --- |
-| HTTP GET | `/api/v1/health/live` | 进程存活探针 | 公开；Compose `backend` healthcheck 调用 | Compose、Nginx、运维监控 |
-| HTTP GET | `/api/v1/health/ready` | SQLite 数据库就绪探针 | 公开；返回 `200` 或 `500 problem+json` | Compose、运维监控 |
-| HTTP GET | `/api/v1/examples` | 分页列出 Example | 公开 | 前端 `useListExamples` |
-| HTTP POST | `/api/v1/examples` | 创建 Example | 公开 | 前端 `useCreateExample` |
-| HTTP GET | `/api/v1/examples/{id}` | 获取单个 Example | 公开 | 前端 `useGetExample` |
-| HTTP PUT | `/api/v1/examples/{id}` | 更新 Example | 公开 | 前端 `useUpdateExample` |
-| HTTP DELETE | `/api/v1/examples/{id}` | 删除 Example，响应 `204` | 公开 | 前端 `useDeleteExample` |
+| GET | `/health/live` | Process liveness | Public | Compose, monitoring |
+| GET | `/health/ready` | SQLite readiness | Public | Monitoring |
+| GET | `/auth/login` | Start OIDC authorization-code login | Public; sets short-lived state cookie | Browser |
+| GET | `/auth/callback` | Validate OIDC response and establish session | Public callback; requires matching state cookie | IdP |
+| POST | `/auth/logout` | Revoke local Tailor session | Public and idempotent; validates Origin | Console |
+| GET | `/relay/me` | Current user and role capabilities | Tailor session; current Headscale user | Console |
+| GET | `/relay/dashboard` | Counts, sync state, policy hash, capabilities | Tailor session; current Headscale user | Console |
+| GET | `/settings` | Read role, application, and server runtime settings | Admin | System settings |
+| PUT | `/settings` | Update Policy group roles, application/self-service policy, reviewer delegation, sync interval, and rejection cooldown | Admin; groups must exist in the current Policy and retain an admin group | System settings |
+| GET | `/devices?search=` | List visible devices | Tailor session; admin sees all, other users see own | Console |
+| GET | `/relays?includeAll=` | List selectable relays; admin may include unavailable entries | Tailor session; `includeAll=true` is admin-only | Console |
+| POST | `/relays` | Directly register a relay | Admin | Console |
+| PUT | `/relays/{nodeId}` | Update relay metadata/selectability | Admin | Console |
+| DELETE | `/relays/{nodeId}` | Cancel a relay registration | Admin; conflicts if references remain | Console |
+| GET | `/applications?status=` | List requests | Tailor session; reviewer sees all, others see own | Console |
+| POST | `/applications` | Apply to register an owned device | Applicant; owned untagged device | Console |
+| POST | `/applications/{id}/cancel` | Cancel own pending request | Applicant; request owner | Console |
+| POST | `/applications/{id}/review` | Approve or reject a request | Reviewer | Console |
+| GET | `/graph?sourceNodeId=` | View source device and relay authorization edges | Tailor session; admin or source owner | Graph editor |
+| PUT | `/assignments` | Merge and commit graph edits to Headscale Policy | Admin or source owner; Policy writes enabled | Graph editor |
+| POST | `/sync` | Trigger immediate Headscale sync | Admin | Console |
+| GET | `/policy/revisions` | List recent policy revisions | Admin | Console |
+| GET | `/policy/revisions/{id}` | Read full before/after policy snapshots | Admin | Console |
+| POST | `/policy/revisions/{id}/rollback` | Restore a revision's before-policy | Admin; live hash must match latest platform revision | Console |
+| GET | `/audit` | List audit records | Admin | Console |
+| GET/POST | `/examples` | Retained starter CRUD example | Tailor session | Generated API example |
+| GET/PUT/DELETE | `/examples/{id}` | Retained starter CRUD example | Tailor session | Generated API example |
 
-## Details
+## Contract Details
 
-- 列表参数：`page`（int32，默认 1）、`pageSize`（int32，默认 20，上限 100）
-- 列表响应：`{ page, pageSize, list: Example[], total: int64 }`
-- 写接口入参：`ExampleInput { name: string(1–120), description?: string(≤2000) }`
-- 错误响应：`400 validation`（请求不合法）、`404 not-found`（资源不存在，仅 GET/PUT/DELETE 单个）、`500 internal`（服务内部错误）
-- 所有错误响应 Content-Type 为 `application/problem+json`，包含 `type`、`title`、`status`、可选 `detail`、`instance`
+- `api/openapi/openapi.yaml` is the cross-client contract and security declaration.
+- Responses use JSON; errors use `application/problem+json` with `type`, `title`, `status`, optional `detail`, and `instance`.
+- Peer Relay request decoding is strict, rejects unknown fields, and caps JSON bodies at 1 MiB. The generated strict Go handler remains responsible for health and retained examples; Peer Relay routes are bound in `internal/handler/peer_relay.go` and use the service layer.
+- `page`/`pageSize` pagination applies to retained Example endpoints. Peer Relay collection responses are currently bounded by the data returned and are not paginated.
+- Times use ISO 8601 `date-time`.
+- Conflict responses identify stale policy hashes, ambiguous grants, or invalid state transitions. `503` covers unavailable OIDC/Headscale dependencies, disabled Policy writes, or unavailable Headscale.
 
 ## How To Maintain
 
-- 新增稳定入口时在本表登记，并同步更新 `api/openapi/openapi.yaml` 与相关 feature 文档
-- 边界或权限变化时同步更新本表与 `docs/architecture/auth-and-permissions.md`
-- 不在这里复制完整请求响应示例；详细约定写在 `conventions.md` 或具体 feature 文档
+- Update `api/openapi/openapi.yaml` first, then implementation/client and this route table.
+- Peer Relay operation types are generated into the React client with `orval`; the Go generator includes only `health` and `examples` tags because Peer Relay routes use a dedicated Gin handler adapter.
+- Peer Relay collection APIs return complete arrays; the console applies browser-side pagination. Mutating methods, OIDC entry points, and public logout can return `429` with `Retry-After`.
+- Run OpenAPI lint and generation checks when the local toolchain is available. Record environment blocks and generated drift in the delivery notes.

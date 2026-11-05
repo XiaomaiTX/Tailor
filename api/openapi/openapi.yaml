@@ -1,22 +1,95 @@
 openapi: 3.0.3
 info:
-  title: Go React Starter API
+  title: Peer Relay Manager API
   version: 1.0.0
-  description: Go React Starter 的中性 API 基座。
+  description: 面向 Headscale 的 Peer Relay 注册审批与授权编排 API。
+  x-rate-limit: OIDC entry points and public logout allow 20 requests per network peer per minute; other unsafe API methods allow 60 requests per authenticated user per minute. A 429 response includes Retry-After.
 servers:
   - url: /api/v1
-security: []
+security:
+  - TailorSession: []
 tags:
+  - name: authentication
+    description: 外部 OIDC 登录与本地 Tailor 会话。
   - name: health
     description: 服务存活与依赖就绪状态。
   - name: examples
-    description: 用于验证技术链路的中性资源。
+    description: 保留的 OpenAPI 分层链路示例。
+  - name: peer-relay
+    description: Peer Relay 设备、注册申请与授权图。
+  - name: administration
+    description: Policy 历史、审计与同步操作。
 paths:
+  /auth/login:
+    get:
+      tags: [authentication]
+      summary: 开始 OIDC 登录
+      operationId: startOIDCLogin
+      security: []
+      responses:
+        '302':
+          description: 重定向到配置的 OIDC 提供方
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+            Set-Cookie:
+              description: 短时、HttpOnly 的 OIDC state cookie
+              schema: { type: string }
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+  /auth/callback:
+    get:
+      tags: [authentication]
+      summary: 处理 OIDC 登录回调
+      operationId: completeOIDCLogin
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+        - name: error
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '302':
+          description: 成功后回到控制台；失败后回到登录页
+          headers:
+            Location:
+              schema: { type: string, format: uri-reference }
+            Set-Cookie:
+              description: 成功时设置 Tailor 会话 Cookie，并清除 state cookie
+              schema: { type: string }
+  /auth/logout:
+    post:
+      tags: [authentication]
+      summary: 退出 Tailor 会话
+      operationId: logoutOIDCSession
+      security: []
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '204':
+          description: 已撤销本地会话并清除会话 Cookie
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
   /health/live:
     get:
       tags: [health]
       summary: 获取存活状态
       operationId: getLiveHealth
+      security: []
       responses:
         '200':
           description: 进程可服务
@@ -31,6 +104,7 @@ paths:
       tags: [health]
       summary: 获取就绪状态
       operationId: getReadyHealth
+      security: []
       responses:
         '200':
           description: 依赖已就绪
@@ -70,6 +144,8 @@ paths:
             schema:
               $ref: '#/components/schemas/ExampleInput'
       responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
         '201':
           description: 已创建
           content:
@@ -111,6 +187,8 @@ paths:
             schema:
               $ref: '#/components/schemas/ExampleInput'
       responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
         '200':
           description: 已更新
           content:
@@ -128,6 +206,8 @@ paths:
       summary: 删除 Example
       operationId: deleteExample
       responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
         '204':
           description: 已删除
         '400':
@@ -136,7 +216,501 @@ paths:
           $ref: '#/components/responses/NotFoundProblem'
         '500':
           $ref: '#/components/responses/InternalProblem'
+  /relay/me:
+    get:
+      tags: [peer-relay]
+      summary: 获取当前 Headscale 用户与平台权限
+      operationId: getRelayMe
+      responses:
+        '200':
+          description: 当前用户权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayUser'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /relay/dashboard:
+    get:
+      tags: [peer-relay]
+      summary: 获取 Peer Relay 概览
+      operationId: getRelayDashboard
+      responses:
+        '200':
+          description: 设备、Relay、申请和同步概览
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayDashboard'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /settings:
+    get:
+      tags: [administration]
+      summary: 获取平台权限与申请设置
+      operationId: getPeerRelaySettings
+      responses:
+        '200':
+          description: 当前平台设置（Headscale 凭据和策略写入开关只读）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerRelaySettings'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+    put:
+      tags: [administration]
+      summary: 更新平台 Group 权限与申请策略
+      operationId: updatePeerRelaySettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeerRelaySettingsInput'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: 已保存
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerRelaySettings'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /devices:
+    get:
+      tags: [peer-relay]
+      summary: 搜索当前用户可管理的设备
+      operationId: listDevices
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+      responses:
+        '200':
+          description: 设备列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /relays:
+    get:
+      tags: [peer-relay]
+      summary: 列出可选 Peer Relay
+      operationId: listRelays
+      parameters:
+        - name: includeAll
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Relay 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Relay'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+    post:
+      tags: [peer-relay]
+      summary: 管理员直接标注 Relay
+      operationId: registerRelay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelayRegistration'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '201':
+          description: Relay 已标注
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relay'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /relays/{nodeId}:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    put:
+      tags: [peer-relay]
+      summary: 更新 Relay 元数据或可选状态
+      operationId: updateRelay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelayUpdate'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: Relay 已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relay'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+    delete:
+      tags: [peer-relay]
+      summary: 取消 Relay 标注
+      operationId: cancelRelay
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '204':
+          description: Relay 已取消
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /applications:
+    get:
+      tags: [peer-relay]
+      summary: 列出当前用户或待审批 Relay 申请
+      operationId: listApplications
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected, cancelled, invalidated]
+      responses:
+        '200':
+          description: 申请列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RelayApplication'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+    post:
+      tags: [peer-relay]
+      summary: 申请将自己的设备标注为 Relay
+      operationId: createApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelayApplicationInput'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '201':
+          description: 申请已提交
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayApplication'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /applications/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationId'
+    post:
+      tags: [peer-relay]
+      summary: 撤销待审批申请
+      operationId: cancelApplication
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '204':
+          description: 申请已撤销
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /applications/{id}/review:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationId'
+    post:
+      tags: [peer-relay]
+      summary: 审批或拒绝 Relay 申请
+      operationId: reviewApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewInput'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: 申请已审核
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayApplication'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /graph:
+    get:
+      tags: [peer-relay]
+      summary: 获取单设备为中心的 Peer Relay 授权图
+      operationId: getGraph
+      parameters:
+        - name: sourceNodeId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 授权图与 Policy 基线
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayGraph'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /assignments:
+    put:
+      tags: [peer-relay]
+      summary: 合并并提交设备的 Peer Relay 授权草稿
+      operationId: updateAssignments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentInput'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: 授权已保存并回读确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentResult'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /sync:
+    post:
+      tags: [administration]
+      summary: 立即同步 Headscale 用户、设备和 Policy
+      operationId: syncHeadscale
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '204':
+          description: 同步成功
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /policy/revisions:
+    get:
+      tags: [administration]
+      summary: 列出 Policy 提交历史
+      operationId: listPolicyRevisions
+      responses:
+        '200':
+          description: 最近 30 个 Policy 版本
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyRevision'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /policy/revisions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RevisionId'
+    get:
+      tags: [administration]
+      summary: 获取 Policy 版本完整前后快照
+      operationId: getPolicyRevisionDetail
+      responses:
+        '200':
+          description: Policy 版本及前后快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyRevisionDetail'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /policy/revisions/{id}/rollback:
+    parameters:
+      - $ref: '#/components/parameters/RevisionId'
+    post:
+      tags: [administration]
+      summary: 回滚仍与当前 Policy 基线匹配的版本
+      operationId: rollbackPolicyRevision
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: 已回滚并回读确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyRevision'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /audit:
+    get:
+      tags: [administration]
+      summary: 列出最近的授权和管理审计记录
+      operationId: listAuditLogs
+      responses:
+        '200':
+          description: 最近 100 条审计记录
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLog'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
 components:
+  securitySchemes:
+    TailorSession:
+      type: apiKey
+      in: cookie
+      name: tailor_session
+      description: 由 Tailor OIDC 回调签发的 HTTP-only 服务端会话 Cookie。
   parameters:
     Page:
       name: page
@@ -163,6 +737,28 @@ components:
         type: integer
         format: int64
         minimum: 1
+    NodeId:
+      name: nodeId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 120
+    ApplicationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RevisionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
     HealthStatus:
       type: object
@@ -218,6 +814,254 @@ components:
         total:
           type: integer
           format: int64
+    RelayUser:
+      type: object
+      required: [username, groups, isAdmin, isReviewer, canApply, canManageRelays, canEditAllDevices]
+      properties:
+        username: { type: string }
+        email: { type: string }
+        groups:
+          type: array
+          items: { type: string }
+        isAdmin: { type: boolean }
+        isReviewer: { type: boolean }
+        canApply: { type: boolean }
+        canManageRelays: { type: boolean }
+        canEditAllDevices: { type: boolean }
+    PeerRelaySettingsInput:
+      type: object
+      required: [adminGroups, reviewerGroups, applicantGroups, applicantMode, reviewerManageRelays, reviewerEditAllDevices, selfServiceEnabled, syncIntervalSeconds, reapplyCooldownHours]
+      properties:
+        adminGroups:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, pattern: '^group:.+', maxLength: 120 }
+        reviewerGroups:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, pattern: '^group:.+', maxLength: 120 }
+        applicantGroups:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, pattern: '^group:.+', maxLength: 120 }
+        applicantMode: { type: string, enum: [all, groups, disabled] }
+        reviewerManageRelays: { type: boolean }
+        reviewerEditAllDevices: { type: boolean }
+        selfServiceEnabled: { type: boolean }
+        syncIntervalSeconds: { type: integer, minimum: 10, maximum: 3600 }
+        reapplyCooldownHours: { type: integer, minimum: 0, maximum: 720 }
+    PeerRelaySettings:
+      allOf:
+        - $ref: '#/components/schemas/PeerRelaySettingsInput'
+        - type: object
+          required: [headscaleConfigured, policyWritesEnabled]
+          properties:
+            headscaleConfigured: { type: boolean }
+            policyWritesEnabled: { type: boolean }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+    Device:
+      type: object
+      required: [nodeId, hostname, givenName, username, tags, missing]
+      properties:
+        nodeId: { type: string }
+        hostname: { type: string }
+        givenName: { type: string }
+        ipv4: { type: string }
+        ipv6: { type: string }
+        username: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        online: { type: boolean, nullable: true }
+        lastSeen: { type: string, format: date-time, nullable: true }
+        expiry: { type: string, format: date-time, nullable: true }
+        missing: { type: boolean }
+    Relay:
+      type: object
+      required: [nodeId, displayName, selectable, createdBy, createdAt, updatedAt, device]
+      properties:
+        nodeId: { type: string }
+        displayName: { type: string }
+        region: { type: string }
+        udpPort: { type: integer, minimum: 1, maximum: 65535, nullable: true }
+        publicEndpoint: { type: string }
+        isp: { type: string }
+        description: { type: string }
+        selectable: { type: boolean }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        device: { $ref: '#/components/schemas/Device' }
+    RelayRegistration:
+      type: object
+      required: [nodeId, displayName]
+      properties:
+        nodeId: { type: string, minLength: 1, maxLength: 120 }
+        displayName: { type: string, minLength: 1, maxLength: 80 }
+        region: { type: string, maxLength: 120 }
+        udpPort: { type: integer, minimum: 1, maximum: 65535, nullable: true }
+        publicEndpoint: { type: string, maxLength: 253 }
+        isp: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        selectable: { type: boolean }
+    RelayUpdate:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 80 }
+        region: { type: string, maxLength: 120 }
+        udpPort: { type: integer, minimum: 1, maximum: 65535, nullable: true }
+        publicEndpoint: { type: string, maxLength: 253 }
+        isp: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        selectable: { type: boolean }
+    RelayApplicationInput:
+      type: object
+      required: [nodeId, displayName]
+      properties:
+        nodeId: { type: string, minLength: 1, maxLength: 120 }
+        displayName: { type: string, minLength: 1, maxLength: 80 }
+        region: { type: string, maxLength: 120 }
+        udpPort: { type: integer, minimum: 1, maximum: 65535, nullable: true }
+        publicEndpoint: { type: string, maxLength: 253 }
+        isp: { type: string, maxLength: 120 }
+        reason: { type: string, maxLength: 2000 }
+    RelayApplication:
+      type: object
+      required: [id, applicant, nodeId, displayName, status, createdAt, updatedAt, device]
+      properties:
+        id: { type: string, format: uuid }
+        applicant: { type: string }
+        nodeId: { type: string }
+        displayName: { type: string }
+        region: { type: string }
+        udpPort: { type: integer, nullable: true }
+        publicEndpoint: { type: string }
+        isp: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [pending, approved, rejected, cancelled, invalidated] }
+        reviewer: { type: string }
+        reviewNote: { type: string }
+        createdAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        updatedAt: { type: string, format: date-time }
+        device: { $ref: '#/components/schemas/Device' }
+    ReviewInput:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        note: { type: string, maxLength: 2000 }
+        relay:
+          allOf:
+            - $ref: '#/components/schemas/RelayUpdate'
+    RelayAssignmentView:
+      type: object
+      required: [relayNodeId, relay, source, editable]
+      properties:
+        relayNodeId: { type: string }
+        relay: { $ref: '#/components/schemas/Relay' }
+        source: { type: string, enum: [platform, external, inherited, unknown, exception, ''] }
+        editable: { type: boolean }
+        warning: { type: string }
+    RelayGraph:
+      type: object
+      required: [device, relays, basePolicyHash, policyStale, policyWritesEnabled, canEdit]
+      properties:
+        device: { $ref: '#/components/schemas/Device' }
+        relays:
+          type: array
+          items: { $ref: '#/components/schemas/RelayAssignmentView' }
+        basePolicyHash: { type: string }
+        policyStale: { type: boolean }
+        policyWritesEnabled: { type: boolean }
+        canEdit: { type: boolean }
+    AssignmentInput:
+      type: object
+      required: [sourceNodeId, relayNodeIds, basePolicyHash]
+      properties:
+        sourceNodeId: { type: string, minLength: 1, maxLength: 120 }
+        relayNodeIds:
+          type: array
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 120 }
+        basePolicyHash: { type: string, minLength: 64, maxLength: 64 }
+    AssignmentResult:
+      type: object
+      required: [graph, added, removed, policyChanged]
+      properties:
+        graph: { $ref: '#/components/schemas/RelayGraph' }
+        added: { type: integer }
+        removed: { type: integer }
+        policyChanged: { type: boolean }
+    RelayDashboard:
+      type: object
+      required: [deviceCount, relayCount, selectableRelayCount, assignmentCount, pendingApplicationCount, policyWritesEnabled, currentUser]
+      properties:
+        deviceCount: { type: integer }
+        relayCount: { type: integer }
+        selectableRelayCount: { type: integer }
+        assignmentCount: { type: integer }
+        pendingApplicationCount: { type: integer }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+        syncError: { type: string }
+        policyHash: { type: string }
+        policyWritesEnabled: { type: boolean }
+        currentUser: { $ref: '#/components/schemas/RelayUser' }
+    PolicyRevision:
+      type: object
+      required: [id, actor, summary, beforeHash, afterHash, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        actor: { type: string }
+        summary: { type: string }
+        beforeHash: { type: string }
+        afterHash: { type: string }
+        status: { type: string, enum: [pending, success, failed] }
+        createdAt: { type: string, format: date-time }
+    PolicyRevisionDetail:
+      allOf:
+        - $ref: '#/components/schemas/PolicyRevision'
+        - type: object
+          required: [before, after, addedRelayGrants, removedRelayGrants, otherPolicyChanged]
+          properties:
+            before: { type: string }
+            after: { type: string }
+            addedRelayGrants:
+              type: array
+              items: { $ref: '#/components/schemas/PolicyRelayGrantChange' }
+            removedRelayGrants:
+              type: array
+              items: { $ref: '#/components/schemas/PolicyRelayGrantChange' }
+            otherPolicyChanged: { type: boolean }
+    PolicyRelayGrantChange:
+      type: object
+      required: [src, dst]
+      properties:
+        src:
+          type: array
+          items: { type: string }
+        dst:
+          type: array
+          items: { type: string }
+    AuditLog:
+      type: object
+      required: [id, actor, action, target, result, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        actor: { type: string }
+        action: { type: string }
+        target: { type: string }
+        before: { type: string }
+        after: { type: string }
+        result: { type: string }
+        createdAt: { type: string, format: date-time }
     Problem:
       type: object
       required: [type, title, status]
@@ -234,6 +1078,15 @@ components:
         instance:
           type: string
   responses:
+    RateLimitedProblem:
+      description: 请求超过当前速率限制，响应包含 Retry-After 秒数。
+      headers:
+        Retry-After:
+          schema: { type: integer, example: 60 }
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     ValidationProblem:
       description: 请求不合法
       content:
@@ -248,6 +1101,30 @@ components:
             $ref: '#/components/schemas/Problem'
     InternalProblem:
       description: 服务内部错误
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnauthorizedProblem:
+      description: 缺少有效的 Tailor 登录会话
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ForbiddenProblem:
+      description: 当前用户没有执行此操作的权限
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ConflictProblem:
+      description: Policy 基线或资源状态已变化
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnavailableProblem:
+      description: Headscale 或必要服务暂不可用
       content:
         application/problem+json:
           schema:

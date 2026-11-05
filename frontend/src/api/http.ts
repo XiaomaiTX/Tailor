@@ -50,6 +50,7 @@ export async function customFetch<T>(
   }
 
   const response = await fetch(target, {
+    credentials: "include",
     ...options,
     headers,
   })

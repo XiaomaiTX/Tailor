@@ -23,7 +23,17 @@ func New(status int, typeName, title string, detail *string) Details {
 func Validation(detail string) Details {
 	return New(http.StatusBadRequest, "validation", "请求不合法", &detail)
 }
-func NotFound() Details { return New(http.StatusNotFound, "not-found", "资源不存在", nil) }
+func NotFound() Details     { return New(http.StatusNotFound, "not-found", "资源不存在", nil) }
+func Unauthorized() Details { return New(http.StatusUnauthorized, "unauthorized", "需要登录", nil) }
+func Forbidden() Details {
+	return New(http.StatusForbidden, "forbidden", "没有执行此操作的权限", nil)
+}
+func Conflict(detail string) Details {
+	return New(http.StatusConflict, "conflict", "数据已变化", &detail)
+}
+func Unavailable(detail string) Details {
+	return New(http.StatusServiceUnavailable, "unavailable", "服务暂不可用", &detail)
+}
 func Internal() Details {
 	return New(http.StatusInternalServerError, "internal", "服务内部错误", nil)
 }

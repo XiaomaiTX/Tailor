@@ -2,9 +2,8 @@
 status: active
 doc_type: feature
 owner: engineering
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-04
 source_of_truth:
-  - frontend/src/pages/example-page.tsx
   - backend/cmd/api/main.go
   - backend/internal/handler/api.go
   - backend/internal/service/example.go
@@ -14,7 +13,7 @@ source_of_truth:
 
 # Example 资源链路
 
-> 这是一个技术基座示例资源链路，用于验证 OpenAPI → Go 分层 → React 调用方的端到端工作方式。它不是业务能力，第一个真实业务模块落地时应在本目录新增独立 feature 文档。
+> 这是保留的技术基座 CRUD API，用于演示 OpenAPI → Go 分层 → React 生成客户端链路。当前控制台主流程是 Peer Relay Manager；该示例页面不再作为主导航入口。
 
 ## Module Purpose
 
@@ -26,8 +25,8 @@ source_of_truth:
 
 ### User Entry
 
-- 浏览器路由 `/examples` → [frontend/src/pages/example-page.tsx](../../frontend/src/pages/example-page.tsx)
-- 列表查询、新建、编辑、删除都在该页面完成
+- API operations are retained under `/api/v1/examples` for the generated-handler example.
+- The application does not currently link the starter Example page from the Peer Relay console.
 
 ### System Entry
 
@@ -36,8 +35,8 @@ source_of_truth:
 
 ## Permission Boundaries
 
-- 当前无身份认证；所有接口对任何能访问后端的客户端公开
-- 写操作（POST / PUT / DELETE）也没有访问控制
+- Example API routes pass through the same Tailor session middleware as other business APIs.
+- Only health probes are public; see [auth-and-permissions.md](../architecture/auth-and-permissions.md).
 - 详见 [docs/architecture/auth-and-permissions.md](../architecture/auth-and-permissions.md)
 
 ## Key Invariants
@@ -46,7 +45,7 @@ source_of_truth:
 - `name` 长度 1–120（按 UTF-8 字符计数，使用 `[]rune`）；`description` 可空，最长 2000 字符
 - SQLite 表结构由 `model.Example` 定义并在后端启动时自动初始化；API 字段变化需同步 OpenAPI schema 与生成产物
 - 错误响应必须经 `internal/problem` 输出为 `application/problem+json`；handler / service 不直接拼装错误 JSON
-- 前端调用必须走 `@/api/generated/client` 暴露的 React Query hooks，写操作完成后通过 `queryClient.invalidateQueries` 让列表与单条缓存失效
+- React generated client artifacts remain as the example of generated API calls; the Example page is not wired into the main console.
 
 ## Primary Code Files
 
@@ -57,7 +56,6 @@ source_of_truth:
   - [backend/internal/repository/example.go](../../backend/internal/repository/example.go)
   - [backend/internal/model/example.go](../../backend/internal/model/example.go)
 - 前端：
-  - [frontend/src/pages/example-page.tsx](../../frontend/src/pages/example-page.tsx)
   - [frontend/src/api/generated/client.ts](../../frontend/src/api/generated/client.ts)
   - [frontend/src/api/http.ts](../../frontend/src/api/http.ts)
   - [frontend/src/lib/problem.ts](../../frontend/src/lib/problem.ts)

@@ -12,6 +12,7 @@ import (
 
 	"github.com/XiaomaiTX/go-react-starter/internal/config"
 	"github.com/XiaomaiTX/go-react-starter/internal/handler"
+	"github.com/XiaomaiTX/go-react-starter/internal/headscale"
 	"github.com/XiaomaiTX/go-react-starter/internal/model"
 	"github.com/XiaomaiTX/go-react-starter/internal/repository"
 	"github.com/XiaomaiTX/go-react-starter/internal/router"
@@ -38,7 +39,12 @@ func main() {
 	if err != nil {
 		logger.Fatal("打开 SQLite 数据库失败", zap.Error(err))
 	}
-	if err := database.AutoMigrate(&model.Example{}); err != nil {
+	if err := database.AutoMigrate(
+		&model.Example{}, &model.HeadscaleUser{}, &model.Device{}, &model.RelayNode{},
+		&model.RelayApplication{}, &model.RelayAssignment{}, &model.PolicyRevision{},
+		&model.AuditLog{}, &model.SyncState{}, &model.PeerRelaySettings{},
+		&model.OIDCLoginState{}, &model.AuthSession{},
+	); err != nil {
 		logger.Fatal("初始化 SQLite 表结构失败", zap.Error(err))
 	}
 	sqlDatabase, err := database.DB()
@@ -49,9 +55,22 @@ func main() {
 
 	exampleRepository := repository.NewExampleRepository(database)
 	exampleService := service.NewExampleService(exampleRepository)
+	peerRepository := repository.NewPeerRelayRepository(database)
+	oidcService, err := service.NewOIDCService(context.Background(), cfg, repository.NewAuthRepository(database), peerRepository)
+	if err != nil {
+		logger.Fatal("OIDC 配置或发现文档无效", zap.Error(err))
+	}
+	headscaleClient, err := headscale.NewClient(cfg.HeadscaleURL, cfg.HeadscaleKey)
+	if err != nil {
+		logger.Fatal("Headscale 配置无效", zap.Error(err))
+	}
+	peerRelayService := service.NewPeerRelayService(peerRepository, headscaleClient, cfg)
 	api := handler.NewAPI(exampleService, sqlDatabase.PingContext)
-	engine := router.New(api, cfg, logger)
+	engine := router.NewWithAuth(api, cfg, logger, oidcService, peerRelayService)
 	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.APIPort), Handler: engine, ReadHeaderTimeout: 5 * time.Second}
+	syncContext, stopSync := context.WithCancel(context.Background())
+	defer stopSync()
+	go peerRelayService.RunSyncScheduler(syncContext)
 
 	go func() {
 		logger.Info("HTTP 服务已启动", zap.Int("port", cfg.APIPort))
@@ -63,6 +82,7 @@ func main() {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	<-signals
+	stopSync()
 	shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownContext); err != nil {

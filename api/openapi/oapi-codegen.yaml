@@ -5,4 +5,6 @@ generate:
   strict-server: true
 output: backend/internal/api/generated/openapi.gen.go
 output-options:
-  skip-prune: true
+  # Health and starter example remain on the strict generated server.
+  # Peer Relay routes use the dedicated Gin handler/service adapter.
+  include-tags: [health, examples]
