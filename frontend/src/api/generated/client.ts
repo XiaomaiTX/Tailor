@@ -28,6 +28,9 @@ import type {
   AssignmentInput,
   AssignmentResult,
   AuditLog,
+  BatchAssignmentInput,
+  BatchAssignmentResult,
+  CanvasGraph,
   CompleteOIDCLoginParams,
   ConflictProblemResponse,
   Device,
@@ -2851,6 +2854,136 @@ export const useReviewApplication = <TError = ValidationProblemResponse | Unauth
       return useMutation(getReviewApplicationMutationOptions(options), queryClient);
     }
 
+export type getCanvasGraphResponse200 = {
+  data: CanvasGraph
+  status: 200
+}
+
+export type getCanvasGraphResponse401 = {
+  data: UnauthorizedProblemResponse
+  status: 401
+}
+
+export type getCanvasGraphResponse403 = {
+  data: ForbiddenProblemResponse
+  status: 403
+}
+
+export type getCanvasGraphResponse503 = {
+  data: UnavailableProblemResponse
+  status: 503
+}
+
+export type getCanvasGraphResponseSuccess = (getCanvasGraphResponse200) & {
+  headers: Headers;
+};
+export type getCanvasGraphResponseError = (getCanvasGraphResponse401 | getCanvasGraphResponse403 | getCanvasGraphResponse503) & {
+  headers: Headers;
+};
+
+export type getCanvasGraphResponse = (getCanvasGraphResponseSuccess | getCanvasGraphResponseError)
+
+export const getGetCanvasGraphUrl = () => {
+
+
+
+
+  return `/graph/all`
+}
+
+/**
+ * @summary 获取当前用户可见的全网授权画布
+ */
+export const getCanvasGraph = async ( options?: RequestInit): Promise<getCanvasGraphResponse> => {
+
+  return customFetch<getCanvasGraphResponse>(getGetCanvasGraphUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCanvasGraphQueryKey = () => {
+    return [
+    `/graph/all`
+    ] as const;
+    }
+
+
+export const getGetCanvasGraphQueryOptions = <TData = Awaited<ReturnType<typeof getCanvasGraph>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCanvasGraph>>, TError, TData>>, }
+) => {
+
+const {query: queryOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCanvasGraphQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCanvasGraph>>> = ({ signal }) => getCanvasGraph({ signal });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCanvasGraph>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCanvasGraphQueryResult = NonNullable<Awaited<ReturnType<typeof getCanvasGraph>>>
+export type GetCanvasGraphQueryError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse
+
+
+export function useGetCanvasGraph<TData = Awaited<ReturnType<typeof getCanvasGraph>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCanvasGraph>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCanvasGraph>>,
+          TError,
+          Awaited<ReturnType<typeof getCanvasGraph>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCanvasGraph<TData = Awaited<ReturnType<typeof getCanvasGraph>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCanvasGraph>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCanvasGraph>>,
+          TError,
+          Awaited<ReturnType<typeof getCanvasGraph>>
+        > , 'initialData'
+      >, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCanvasGraph<TData = Awaited<ReturnType<typeof getCanvasGraph>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCanvasGraph>>, TError, TData>>, }
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 获取当前用户可见的全网授权画布
+ */
+
+export function useGetCanvasGraph<TData = Awaited<ReturnType<typeof getCanvasGraph>>, TError = UnauthorizedProblemResponse | ForbiddenProblemResponse | UnavailableProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCanvasGraph>>, TError, TData>>, }
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCanvasGraphQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type getGraphResponse200 = {
   data: RelayGraph
   status: 200
@@ -3116,6 +3249,126 @@ export const useUpdateAssignments = <TError = ValidationProblemResponse | Unauth
         TContext
       > => {
       return useMutation(getUpdateAssignmentsMutationOptions(options), queryClient);
+    }
+
+export type updateAssignmentsBatchResponse200 = {
+  data: BatchAssignmentResult
+  status: 200
+}
+
+export type updateAssignmentsBatchResponse400 = {
+  data: ValidationProblemResponse
+  status: 400
+}
+
+export type updateAssignmentsBatchResponse401 = {
+  data: UnauthorizedProblemResponse
+  status: 401
+}
+
+export type updateAssignmentsBatchResponse403 = {
+  data: ForbiddenProblemResponse
+  status: 403
+}
+
+export type updateAssignmentsBatchResponse404 = {
+  data: NotFoundProblemResponse
+  status: 404
+}
+
+export type updateAssignmentsBatchResponse409 = {
+  data: ConflictProblemResponse
+  status: 409
+}
+
+export type updateAssignmentsBatchResponse429 = {
+  data: RateLimitedProblemResponse
+  status: 429
+}
+
+export type updateAssignmentsBatchResponse503 = {
+  data: UnavailableProblemResponse
+  status: 503
+}
+
+export type updateAssignmentsBatchResponseSuccess = (updateAssignmentsBatchResponse200) & {
+  headers: Headers;
+};
+export type updateAssignmentsBatchResponseError = (updateAssignmentsBatchResponse400 | updateAssignmentsBatchResponse401 | updateAssignmentsBatchResponse403 | updateAssignmentsBatchResponse404 | updateAssignmentsBatchResponse409 | updateAssignmentsBatchResponse429 | updateAssignmentsBatchResponse503) & {
+  headers: Headers;
+};
+
+export type updateAssignmentsBatchResponse = (updateAssignmentsBatchResponseSuccess | updateAssignmentsBatchResponseError)
+
+export const getUpdateAssignmentsBatchUrl = () => {
+
+
+
+
+  return `/assignments/batch`
+}
+
+/**
+ * @summary 校验并一次性提交多台源设备的 Peer Relay 授权
+ */
+export const updateAssignmentsBatch = async (batchAssignmentInput: BatchAssignmentInput, options?: RequestInit): Promise<updateAssignmentsBatchResponse> => {
+
+  return customFetch<updateAssignmentsBatchResponse>(getUpdateAssignmentsBatchUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(batchAssignmentInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateAssignmentsBatchMutationOptions = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | NotFoundProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAssignmentsBatch>>, TError,{data: BatchAssignmentInput}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof updateAssignmentsBatch>>, TError,{data: BatchAssignmentInput}, TContext> => {
+
+const mutationKey = ['updateAssignmentsBatch'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAssignmentsBatch>>, {data: BatchAssignmentInput}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAssignmentsBatch(data,)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAssignmentsBatchMutationResult = NonNullable<Awaited<ReturnType<typeof updateAssignmentsBatch>>>
+    export type UpdateAssignmentsBatchMutationBody = BatchAssignmentInput
+    export type UpdateAssignmentsBatchMutationError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | NotFoundProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse
+
+    /**
+ * @summary 校验并一次性提交多台源设备的 Peer Relay 授权
+ */
+export const useUpdateAssignmentsBatch = <TError = ValidationProblemResponse | UnauthorizedProblemResponse | ForbiddenProblemResponse | NotFoundProblemResponse | ConflictProblemResponse | RateLimitedProblemResponse | UnavailableProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAssignmentsBatch>>, TError,{data: BatchAssignmentInput}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateAssignmentsBatch>>,
+        TError,
+        {data: BatchAssignmentInput},
+        TContext
+      > => {
+      return useMutation(getUpdateAssignmentsBatchMutationOptions(options), queryClient);
     }
 
 export type syncHeadscaleResponse204 = {

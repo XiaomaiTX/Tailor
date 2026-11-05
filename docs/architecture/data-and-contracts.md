@@ -38,6 +38,7 @@ Describes SQLite persistence, shared API contracts, and the Headscale integratio
 - Headscale credentials remain in backend configuration. Policy writes require database Policy mode and are disabled by default.
 - The policy parser accepts HuJSON comments and trailing commas and changes only the `grants` value. It preserves the rest of the source policy, but comments inside a rewritten `grants` array are not preserved.
 - The product does not own general ACL policy editing and refuses unsafe or ambiguous changes.
+- The authorization canvas reads its visible network snapshot through `GET /graph/all` and submits changed source devices together through `PUT /assignments/batch`; one batch is merged into one complete Policy write. Browser-only node positions and viewport do not add server persistence.
 
 ## Invariants
 

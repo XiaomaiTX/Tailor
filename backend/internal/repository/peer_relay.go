@@ -29,9 +29,10 @@ type PeerRelayRepository interface {
 	CompleteApplicationReview(context.Context, model.RelayApplication, *model.RelayNode, model.AuditLog) error
 	Assignments(context.Context, string) ([]model.RelayAssignment, error)
 	SaveAssignmentsWithAudit(context.Context, string, []model.RelayAssignment, model.AuditLog) error
+	SaveAssignmentsBatchWithAudit(context.Context, []string, []model.RelayAssignment, model.AuditLog) error
 	CreateRevisionWithAudit(context.Context, model.PolicyRevision, model.AuditLog) error
 	FinishRevisionWithAudit(context.Context, string, string, string, model.AuditLog) error
-	CompletePolicyUpdate(context.Context, string, string, string, []model.RelayAssignment, []model.AuditLog) error
+	CompletePolicyUpdate(context.Context, string, []string, string, []model.RelayAssignment, []model.AuditLog) error
 	Revisions(context.Context, int) ([]model.PolicyRevision, error)
 	Revision(context.Context, string) (model.PolicyRevision, error)
 	LatestSuccessfulRevision(context.Context) (model.PolicyRevision, error)
@@ -262,6 +263,22 @@ func (r *peerRelayRepository) SaveAssignmentsWithAudit(ctx context.Context, sour
 	})
 }
 
+func (r *peerRelayRepository) SaveAssignmentsBatchWithAudit(ctx context.Context, sourceNodeIDs []string, values []model.RelayAssignment, audit model.AuditLog) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(sourceNodeIDs) > 0 {
+			if err := tx.Where("source_node_id IN ?", sourceNodeIDs).Delete(&model.RelayAssignment{}).Error; err != nil {
+				return err
+			}
+		}
+		if len(values) > 0 {
+			if err := tx.Create(&values).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Create(&audit).Error
+	})
+}
+
 func (r *peerRelayRepository) CreateRevisionWithAudit(ctx context.Context, value model.PolicyRevision, audit model.AuditLog) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&value).Error; err != nil {
@@ -288,7 +305,7 @@ func (r *peerRelayRepository) FinishRevisionWithAudit(ctx context.Context, id, a
 	})
 }
 
-func (r *peerRelayRepository) CompletePolicyUpdate(ctx context.Context, revisionID, sourceNodeID, after string, assignments []model.RelayAssignment, audits []model.AuditLog) error {
+func (r *peerRelayRepository) CompletePolicyUpdate(ctx context.Context, revisionID string, sourceNodeIDs []string, after string, assignments []model.RelayAssignment, audits []model.AuditLog) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&model.PolicyRevision{}).Where("id = ? AND status = ?", revisionID, "pending").Updates(map[string]any{"after": after, "status": "success"})
 		if result.Error != nil {
@@ -297,8 +314,10 @@ func (r *peerRelayRepository) CompletePolicyUpdate(ctx context.Context, revision
 		if result.RowsAffected != 1 {
 			return ErrNotFound
 		}
-		if err := tx.Where("source_node_id = ?", sourceNodeID).Delete(&model.RelayAssignment{}).Error; err != nil {
-			return err
+		if len(sourceNodeIDs) > 0 {
+			if err := tx.Where("source_node_id IN ?", sourceNodeIDs).Delete(&model.RelayAssignment{}).Error; err != nil {
+				return err
+			}
 		}
 		if len(assignments) > 0 {
 			if err := tx.Create(&assignments).Error; err != nil {

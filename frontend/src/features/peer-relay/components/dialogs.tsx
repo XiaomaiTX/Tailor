@@ -21,6 +21,7 @@ import {
   OptionSelect,
 } from "@/features/peer-relay/components/view-primitives"
 import { errorMessage, optional } from "@/features/peer-relay/utils"
+import { useI18n } from "@/i18n"
 
 function DialogHeader({ label }: { label: string }) {
   return (
@@ -231,9 +232,7 @@ export function RelayRegistrationDialog({
   )
   const [displayName, setDisplayName] = useState(relay?.displayName ?? "")
   const [region, setRegion] = useState(relay?.region ?? "")
-  const [port, setPort] = useState(
-    relay?.udpPort ? String(relay.udpPort) : ""
-  )
+  const [port, setPort] = useState(relay?.udpPort ? String(relay.udpPort) : "")
   const [endpoint, setEndpoint] = useState(relay?.publicEndpoint ?? "")
   const [isp, setIsp] = useState(relay?.isp ?? "")
   const [description, setDescription] = useState(relay?.description ?? "")
@@ -248,10 +247,7 @@ export function RelayRegistrationDialog({
     >
       <DialogHeader label={title} />
       {!relay && devices.length === 0 ? (
-        <EmptyState
-          title={t("relay.relays.noEligibleDevice")}
-          icon={Server}
-        />
+        <EmptyState title={t("relay.relays.noEligibleDevice")} icon={Server} />
       ) : (
         <form
           className="space-y-4"
@@ -567,6 +563,7 @@ export function ConfirmDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const { t } = useI18n()
   return (
     <Dialog
       isOpen

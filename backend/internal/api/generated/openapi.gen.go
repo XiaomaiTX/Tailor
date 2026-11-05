@@ -13,6 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/oapi-codegen/runtime"
 	strictgin "github.com/oapi-codegen/runtime/strictmiddleware/gin"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+const (
+	TailorSessionScopes = "TailorSession.Scopes"
 )
 
 // Example defines model for Example.
@@ -52,8 +57,14 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// ApplicationId defines model for ApplicationId.
+type ApplicationId = openapi_types.UUID
+
 // ExampleId defines model for ExampleId.
 type ExampleId = int64
+
+// NodeId defines model for NodeId.
+type NodeId = string
 
 // Page defines model for Page.
 type Page = int32
@@ -61,11 +72,17 @@ type Page = int32
 // PageSize defines model for PageSize.
 type PageSize = int32
 
+// RevisionId defines model for RevisionId.
+type RevisionId = openapi_types.UUID
+
 // InternalProblem defines model for InternalProblem.
 type InternalProblem = Problem
 
 // NotFoundProblem defines model for NotFoundProblem.
 type NotFoundProblem = Problem
+
+// RateLimitedProblem defines model for RateLimitedProblem.
+type RateLimitedProblem = Problem
 
 // ValidationProblem defines model for ValidationProblem.
 type ValidationProblem = Problem
@@ -121,6 +138,8 @@ func (siw *ServerInterfaceWrapper) ListExamples(c *gin.Context) {
 
 	var err error
 
+	c.Set(TailorSessionScopes, []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListExamplesParams
 
@@ -153,6 +172,8 @@ func (siw *ServerInterfaceWrapper) ListExamples(c *gin.Context) {
 // CreateExample operation middleware
 func (siw *ServerInterfaceWrapper) CreateExample(c *gin.Context) {
 
+	c.Set(TailorSessionScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -176,6 +197,8 @@ func (siw *ServerInterfaceWrapper) DeleteExample(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
+
+	c.Set(TailorSessionScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -201,6 +224,8 @@ func (siw *ServerInterfaceWrapper) GetExample(c *gin.Context) {
 		return
 	}
 
+	c.Set(TailorSessionScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -224,6 +249,8 @@ func (siw *ServerInterfaceWrapper) UpdateExample(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
+
+	c.Set(TailorSessionScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -301,6 +328,15 @@ type InternalProblemApplicationProblemPlusJSONResponse Problem
 
 type NotFoundProblemApplicationProblemPlusJSONResponse Problem
 
+type RateLimitedProblemResponseHeaders struct {
+	RetryAfter int
+}
+type RateLimitedProblemApplicationProblemPlusJSONResponse struct {
+	Body Problem
+
+	Headers RateLimitedProblemResponseHeaders
+}
+
 type ValidationProblemApplicationProblemPlusJSONResponse Problem
 
 type ListExamplesRequestObject struct {
@@ -370,6 +406,18 @@ func (response CreateExample400ApplicationProblemPlusJSONResponse) VisitCreateEx
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateExample429ApplicationProblemPlusJSONResponse struct {
+	RateLimitedProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateExample429ApplicationProblemPlusJSONResponse) VisitCreateExampleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
 type CreateExample500ApplicationProblemPlusJSONResponse struct {
 	InternalProblemApplicationProblemPlusJSONResponse
 }
@@ -417,6 +465,18 @@ func (response DeleteExample404ApplicationProblemPlusJSONResponse) VisitDeleteEx
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteExample429ApplicationProblemPlusJSONResponse struct {
+	RateLimitedProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteExample429ApplicationProblemPlusJSONResponse) VisitDeleteExampleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response.Body)
 }
 
 type DeleteExample500ApplicationProblemPlusJSONResponse struct {
@@ -518,6 +578,18 @@ func (response UpdateExample404ApplicationProblemPlusJSONResponse) VisitUpdateEx
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateExample429ApplicationProblemPlusJSONResponse struct {
+	RateLimitedProblemApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateExample429ApplicationProblemPlusJSONResponse) VisitUpdateExampleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response.Body)
 }
 
 type UpdateExample500ApplicationProblemPlusJSONResponse struct {

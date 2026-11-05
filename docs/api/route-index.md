@@ -37,8 +37,10 @@ Stable HTTP routes under `/api/v1`. Health probes and OIDC entry/callback routes
 | POST | `/applications` | Apply to register an owned device | Applicant; owned untagged device | Console |
 | POST | `/applications/{id}/cancel` | Cancel own pending request | Applicant; request owner | Console |
 | POST | `/applications/{id}/review` | Approve or reject a request | Reviewer | Console |
-| GET | `/graph?sourceNodeId=` | View source device and relay authorization edges | Tailor session; admin or source owner | Graph editor |
-| PUT | `/assignments` | Merge and commit graph edits to Headscale Policy | Admin or source owner; Policy writes enabled | Graph editor |
+| GET | `/graph/all` | Read the visible network authorization canvas and one Policy baseline | Tailor session; admin/reviewer sees permitted network scope, regular user sees own sources and registered Relay targets | Authorization canvas |
+| GET | `/graph?sourceNodeId=` | View source device and relay authorization edges | Tailor session; admin or source owner | Single-device compatibility API |
+| PUT | `/assignments` | Merge and commit graph edits to Headscale Policy | Admin or source owner; Policy writes enabled | Single-device compatibility API |
+| PUT | `/assignments/batch` | Validate changed source devices together and commit one merged Policy update | Admin or source owner per changed device; Policy writes enabled | Authorization canvas |
 | POST | `/sync` | Trigger immediate Headscale sync | Admin | Console |
 | GET | `/policy/revisions` | List recent policy revisions | Admin | Console |
 | GET | `/policy/revisions/{id}` | Read full before/after policy snapshots | Admin | Console |
@@ -52,6 +54,8 @@ Stable HTTP routes under `/api/v1`. Health probes and OIDC entry/callback routes
 - `api/openapi/openapi.yaml` is the cross-client contract and security declaration.
 - Responses use JSON; errors use `application/problem+json` with `type`, `title`, `status`, optional `detail`, and `instance`.
 - Peer Relay request decoding is strict, rejects unknown fields, and caps JSON bodies at 1 MiB. The generated strict Go handler remains responsible for health and retained examples; Peer Relay routes are bound in `internal/handler/peer_relay.go` and use the service layer.
+- `/graph/all` returns one device node per visible Headscale device, marks registered Peer Relay roles on those nodes, and scopes source nodes by the caller's server-enforced permissions. `/assignments/batch` accepts only changed sources with their complete desired Relay ID sets and one shared Policy hash; the service validates the whole request before applying one Policy document update.
+- Authorization canvas node positions and viewport remain in browser local storage, isolated by Tailor username and layout version. Assignment drafts are in memory only.
 - `page`/`pageSize` pagination applies to retained Example endpoints. Peer Relay collection responses are currently bounded by the data returned and are not paginated.
 - Times use ISO 8601 `date-time`.
 - Conflict responses identify stale policy hashes, ambiguous grants, or invalid state transitions. `503` covers unavailable OIDC/Headscale dependencies, disabled Policy writes, or unavailable Headscale.

@@ -45,6 +45,7 @@ User and device ownership are resolved against synchronized Headscale IDs and no
 - Relay registration, application review, graph edits, sync, revision history, rollback, and audit routes require a valid OIDC-backed Tailor session.
 - Platform roles continue to come from Headscale Policy Groups and server configuration; OIDC `groups` claims are not used.
 - Policy writes are additionally disabled unless `PEER_RELAY_POLICY_WRITES=true`.
+- The network authorization canvas scopes source nodes in the service: admins and reviewers with all-device graph permission can inspect all devices; regular users can inspect their own source devices. Registered Relay targets are visible to authenticated users. Batch writes re-check each source device, tag state, Relay registration/selectability, IP availability, and the current Policy hash.
 - Headscale API credentials are backend-only. The React app never receives the API key.
 - Non-platform policy grants, unknown selectors, inherited relationships, and duplicate ambiguous exact grants are not silently rewritten.
 - Rollback is refused if the current live policy differs from the latest successful platform revision.

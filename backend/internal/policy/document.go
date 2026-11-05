@@ -29,6 +29,12 @@ type Grant struct {
 	ExactShape bool
 }
 
+type RelayRelationState struct {
+	Exact     bool
+	Inherited bool
+	Unknown   bool
+}
+
 func Parse(raw string) (*Document, error) {
 	clean, err := standardJSON([]byte(raw))
 	if err != nil {
@@ -196,6 +202,104 @@ func (d *Document) EffectiveRelay(source, relay DeviceSelector) (exact, inherite
 		}
 	}
 	return exact, inherited, unknown, nil
+}
+
+func (d *Document) EffectiveRelayMatrix(sources, relays []DeviceSelector) ([][]RelayRelationState, error) {
+	result := make([][]RelayRelationState, len(sources))
+	for i := range result {
+		result[i] = make([]RelayRelationState, len(relays))
+	}
+	for _, raw := range d.Grants {
+		grant, err := parseGrant(raw)
+		if err != nil {
+			return nil, err
+		}
+		if !grant.PeerRelay {
+			continue
+		}
+		sourceMatches := make([]bool, len(sources))
+		sourceUnknown := make([]bool, len(sources))
+		for i, source := range sources {
+			sourceMatches[i], sourceUnknown[i] = selectorsMatch(grant.Src, source, DeviceSelector{}, d.Groups, d.Hosts, false)
+		}
+		needsPeer := selectorsNeedPeer(grant.Dst, d.Groups, map[string]bool{}, 0)
+		relayMatches := make([]bool, len(relays))
+		relayUnknown := make([]bool, len(relays))
+		if !needsPeer {
+			for i, relay := range relays {
+				relayMatches[i], relayUnknown[i] = selectorsMatch(grant.Dst, relay, DeviceSelector{}, d.Groups, d.Hosts, true)
+			}
+		}
+		allKnown := true
+		for _, unknown := range sourceUnknown {
+			allKnown = allKnown && !unknown
+		}
+		for _, unknown := range relayUnknown {
+			allKnown = allKnown && !unknown
+		}
+		if allKnown && !needsPeer {
+			sourceIDs := make([]int, 0, len(sources))
+			relayIDs := make([]int, 0, len(relays))
+			for i, matched := range sourceMatches {
+				if matched {
+					sourceIDs = append(sourceIDs, i)
+				}
+			}
+			for i, matched := range relayMatches {
+				if matched {
+					relayIDs = append(relayIDs, i)
+				}
+			}
+			for _, sourceID := range sourceIDs {
+				for _, relayID := range relayIDs {
+					markRelayRelation(&result[sourceID][relayID], grant, sources[sourceID], relays[relayID])
+				}
+			}
+			continue
+		}
+		for sourceID, source := range sources {
+			for relayID, relay := range relays {
+				relayMatch, relayIsUnknown := relayMatches[relayID], relayUnknown[relayID]
+				if needsPeer {
+					relayMatch, relayIsUnknown = selectorsMatch(grant.Dst, relay, source, d.Groups, d.Hosts, true)
+				}
+				if sourceMatches[sourceID] && relayMatch {
+					markRelayRelation(&result[sourceID][relayID], grant, source, relay)
+				} else if sourceUnknown[sourceID] || relayIsUnknown {
+					result[sourceID][relayID].Unknown = true
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+func markRelayRelation(state *RelayRelationState, grant Grant, source, relay DeviceSelector) {
+	if grant.ExactShape && selectorMatchesIP(grant.Src[0], source.IPs) && selectorMatchesIP(grant.Dst[0], relay.IPs) {
+		state.Exact = true
+	} else {
+		state.Inherited = true
+	}
+}
+
+func selectorsNeedPeer(selectors []string, groups map[string][]string, seen map[string]bool, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	for _, selector := range selectors {
+		selector = strings.TrimSpace(selector)
+		if selector == "autogroup:self" {
+			return true
+		}
+		if !strings.HasPrefix(selector, "group:") || seen[selector] {
+			continue
+		}
+		seen[selector] = true
+		if selectorsNeedPeer(groups[selector], groups, seen, depth+1) {
+			return true
+		}
+	}
+	return false
 }
 
 type DeviceSelector struct {

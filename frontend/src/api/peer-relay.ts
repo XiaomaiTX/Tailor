@@ -3,6 +3,7 @@ import {
   cancelApplication,
   cancelRelay,
   createApplication,
+  getCanvasGraph,
   getGraph,
   getPeerRelaySettings,
   getPolicyRevisionDetail,
@@ -18,13 +19,17 @@ import {
   rollbackPolicyRevision,
   syncHeadscale,
   updateAssignments,
+  updateAssignmentsBatch,
   updatePeerRelaySettings,
   updateRelay,
 } from "@/api/generated/client"
 import type {
   AssignmentInput,
   AssignmentResult,
+  BatchAssignmentInput,
+  BatchAssignmentResult,
   AuditLog,
+  CanvasGraph,
   Device,
   GetGraphParams,
   ListApplicationsParams,
@@ -73,6 +78,9 @@ export const peerRelayApi = {
     const params: GetGraphParams = { sourceNodeId }
     return (await getGraph(params)).data as RelayGraph
   },
+  async canvasGraph() {
+    return (await getCanvasGraph()).data as CanvasGraph
+  },
   async applications(status?: ListApplicationsParams["status"]) {
     const params: ListApplicationsParams = status ? { status } : {}
     return (await listApplications(params)).data as RelayApplication[]
@@ -88,6 +96,9 @@ export const peerRelayApi = {
   },
   async saveAssignments(input: AssignmentInput) {
     return (await updateAssignments(input)).data as AssignmentResult
+  },
+  async saveAssignmentsBatch(input: BatchAssignmentInput) {
+    return (await updateAssignmentsBatch(input)).data as BatchAssignmentResult
   },
   async apply(input: RelayApplicationInput) {
     return (await createApplication(input)).data as RelayApplication

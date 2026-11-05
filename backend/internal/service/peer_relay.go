@@ -145,6 +145,29 @@ type GraphView struct {
 	CanEdit        bool             `json:"canEdit"`
 }
 
+type CanvasNodeView struct {
+	Device     DeviceView       `json:"device"`
+	Relay      *model.RelayNode `json:"relay,omitempty"`
+	CanEdit    bool             `json:"canEdit"`
+	CanConfirm bool             `json:"canConfirm"`
+}
+
+type CanvasEdgeView struct {
+	SourceNodeID string `json:"sourceNodeId"`
+	RelayNodeID  string `json:"relayNodeId"`
+	Source       string `json:"source"`
+	Editable     bool   `json:"editable"`
+	Warning      string `json:"warning,omitempty"`
+}
+
+type CanvasGraphView struct {
+	Nodes          []CanvasNodeView `json:"nodes"`
+	Edges          []CanvasEdgeView `json:"edges"`
+	BasePolicyHash string           `json:"basePolicyHash"`
+	PolicyStale    bool             `json:"policyStale"`
+	PolicyWrites   bool             `json:"policyWritesEnabled"`
+}
+
 type DashboardView struct {
 	DeviceCount     int        `json:"deviceCount"`
 	RelayCount      int        `json:"relayCount"`
@@ -169,6 +192,25 @@ type AssignmentResult struct {
 	Added         int       `json:"added"`
 	Removed       int       `json:"removed"`
 	PolicyChanged bool      `json:"policyChanged"`
+}
+
+type AssignmentChange struct {
+	SourceNodeID string   `json:"sourceNodeId"`
+	RelayNodeIDs []string `json:"relayNodeIds"`
+}
+
+type BatchAssignmentInput struct {
+	Changes        []AssignmentChange `json:"changes"`
+	BasePolicyHash string             `json:"basePolicyHash"`
+}
+
+type BatchAssignmentResult struct {
+	BasePolicyHash     string   `json:"basePolicyHash"`
+	ChangedSourceCount int      `json:"changedSourceCount"`
+	Added              int      `json:"added"`
+	Removed            int      `json:"removed"`
+	PolicyChanged      bool     `json:"policyChanged"`
+	SourceNodeIDs      []string `json:"sourceNodeIds"`
 }
 
 type RevisionView struct {
@@ -1062,6 +1104,201 @@ func (s *PeerRelayService) Graph(ctx context.Context, username, sourceNodeID str
 	return result, nil
 }
 
+func (s *PeerRelayService) CanvasGraph(ctx context.Context, username string) (CanvasGraphView, error) {
+	doc, stale, readErr := s.readPolicy(ctx)
+	role, err := s.roles(ctx, username, doc)
+	if err != nil {
+		return CanvasGraphView{}, err
+	}
+	devices, err := s.repo.Devices(ctx)
+	if err != nil {
+		return CanvasGraphView{}, err
+	}
+	relays, err := s.repo.Relays(ctx, true)
+	if err != nil {
+		return CanvasGraphView{}, err
+	}
+	assignments, err := s.repo.Assignments(ctx, "")
+	if err != nil {
+		return CanvasGraphView{}, err
+	}
+
+	policyStale := stale || readErr != nil || doc == nil
+	result := CanvasGraphView{
+		Nodes: []CanvasNodeView{}, Edges: []CanvasEdgeView{}, PolicyWrites: s.cfg.PolicyWrites,
+		PolicyStale: policyStale,
+	}
+	if doc != nil {
+		result.BasePolicyHash = doc.Hash()
+	}
+
+	devicesByID := indexDevices(devices)
+	relaysByID := make(map[string]model.RelayNode, len(relays))
+	for _, relay := range relays {
+		if relay.CancelledAt == nil {
+			relaysByID[relay.NodeID] = relay
+		}
+	}
+	visibleSources := make(map[string]model.Device)
+	nodesByID := make(map[string]CanvasNodeView)
+	for _, device := range devices {
+		if role.canEditAllDevices || device.UserID == role.user.ID {
+			visibleSources[device.NodeID] = device
+			nodesByID[device.NodeID] = CanvasNodeView{Device: deviceView(device)}
+		}
+	}
+	for nodeID, relay := range relaysByID {
+		device, exists := devicesByID[nodeID]
+		if !exists {
+			device = model.Device{NodeID: nodeID, Missing: true}
+		}
+		node, alreadyVisible := nodesByID[nodeID]
+		if !alreadyVisible {
+			node.Device = deviceView(device)
+		}
+		relayCopy := relay
+		node.Relay = &relayCopy
+		nodesByID[nodeID] = node
+	}
+
+	canConfirm := func(device model.Device) bool {
+		if device.Missing || policyStale || doc == nil {
+			return false
+		}
+		_, selectorErr := selectorIP(selector(device))
+		return selectorErr == nil
+	}
+	canEditSource := func(device model.Device) bool {
+		view := deviceView(device)
+		permission := role.isAdmin || role.canEditAllDevices || (role.selfServiceEnabled && device.UserID == role.user.ID)
+		if len(view.Tags) > 0 && !role.isAdmin {
+			permission = false
+		}
+		return permission && canConfirm(device) && s.cfg.PolicyWrites
+	}
+	for nodeID, node := range nodesByID {
+		device, exists := devicesByID[nodeID]
+		if !exists {
+			device = model.Device{NodeID: nodeID, Missing: true}
+		}
+		node.CanConfirm = canConfirm(device)
+		if _, isSource := visibleSources[nodeID]; isSource {
+			node.CanEdit = canEditSource(device)
+		}
+		nodesByID[nodeID] = node
+	}
+
+	assignmentsByPair := make(map[string]model.RelayAssignment, len(assignments))
+	for _, assignment := range assignments {
+		assignmentsByPair[assignment.SourceNodeID+"\x00"+assignment.RelayNodeID] = assignment
+	}
+	sourceIDs := make([]string, 0, len(visibleSources))
+	for nodeID := range visibleSources {
+		sourceIDs = append(sourceIDs, nodeID)
+	}
+	sort.Strings(sourceIDs)
+	relayIDs := make([]string, 0, len(relaysByID))
+	for nodeID := range relaysByID {
+		relayIDs = append(relayIDs, nodeID)
+	}
+	sort.Strings(relayIDs)
+	sourceSelectors := make([]policy.DeviceSelector, len(sourceIDs))
+	for i, sourceID := range sourceIDs {
+		sourceSelectors[i] = selector(visibleSources[sourceID])
+	}
+	relaySelectors := make([]policy.DeviceSelector, len(relayIDs))
+	for i, relayID := range relayIDs {
+		relayDevice, exists := devicesByID[relayID]
+		if !exists {
+			relayDevice = model.Device{NodeID: relayID, Missing: true}
+		}
+		relaySelectors[i] = selector(relayDevice)
+	}
+	var relationMatrix [][]policy.RelayRelationState
+	var relationErr error
+	if doc != nil {
+		relationMatrix, relationErr = doc.EffectiveRelayMatrix(sourceSelectors, relaySelectors)
+		if relationErr != nil {
+			policyStale = true
+			result.PolicyStale = true
+		}
+	}
+	for sourceIndex, sourceID := range sourceIDs {
+		source := visibleSources[sourceID]
+		for relayIndex, relayID := range relayIDs {
+			relayDevice, exists := devicesByID[relayID]
+			if !exists {
+				relayDevice = model.Device{NodeID: relayID, Missing: true}
+			}
+			assignment, hasAssignment := assignmentsByPair[sourceID+"\x00"+relayID]
+			kind, warning := "", ""
+			if relationErr != nil {
+				if hasAssignment && assignment.Managed {
+					kind, warning = "exception", "无法解析 Policy，无法确认授权关系"
+				}
+			} else if doc != nil && !source.Missing && !relayDevice.Missing {
+				relation := relationMatrix[sourceIndex][relayIndex]
+				if hasAssignment && assignment.Managed && relation.Exact {
+					kind = "platform"
+				} else if relation.Exact {
+					kind = "external"
+				} else if relation.Inherited {
+					kind = "inherited"
+				} else if relation.Unknown {
+					kind, warning = "unknown", "Policy 中存在无法识别的 Peer Relay 选择器"
+				} else if hasAssignment && assignment.Managed {
+					kind, warning = "exception", "平台记录存在，但当前 Policy 中未找到对应授权"
+				}
+			} else if hasAssignment && assignment.Managed {
+				kind, warning = "exception", "设备或 Policy 数据不可用，无法确认授权关系"
+			}
+			if kind == "" {
+				continue
+			}
+			editable := nodesByID[sourceID].CanEdit && (kind == "platform" || kind == "exception") && !policyStale && canConfirm(source) && canConfirm(relayDevice)
+			result.Edges = append(result.Edges, CanvasEdgeView{
+				SourceNodeID: sourceID, RelayNodeID: relayID, Source: kind, Editable: editable, Warning: warning,
+			})
+		}
+	}
+	for nodeID, node := range nodesByID {
+		if policyStale {
+			node.CanEdit = false
+			node.CanConfirm = false
+		}
+		nodesByID[nodeID] = node
+	}
+	if policyStale {
+		for i := range result.Edges {
+			result.Edges[i].Editable = false
+		}
+	}
+	for _, node := range nodesByID {
+		result.Nodes = append(result.Nodes, node)
+	}
+	sort.Slice(result.Nodes, func(i, j int) bool {
+		left := result.Nodes[i].Device.GivenName
+		if left == "" {
+			left = result.Nodes[i].Device.Hostname
+		}
+		right := result.Nodes[j].Device.GivenName
+		if right == "" {
+			right = result.Nodes[j].Device.Hostname
+		}
+		if left == right {
+			return result.Nodes[i].Device.NodeID < result.Nodes[j].Device.NodeID
+		}
+		return left < right
+	})
+	sort.Slice(result.Edges, func(i, j int) bool {
+		if result.Edges[i].SourceNodeID == result.Edges[j].SourceNodeID {
+			return result.Edges[i].RelayNodeID < result.Edges[j].RelayNodeID
+		}
+		return result.Edges[i].SourceNodeID < result.Edges[j].SourceNodeID
+	})
+	return result, nil
+}
+
 func (s *PeerRelayService) UpdateAssignments(ctx context.Context, username string, input AssignmentInput) (AssignmentResult, error) {
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
@@ -1222,13 +1459,12 @@ func (s *PeerRelayService) UpdateAssignments(ctx context.Context, username strin
 			return username
 		}(), UpdatedBy: username, CreatedAt: createdAt, UpdatedAt: now})
 	}
-	newPolicy := doc.Raw
 	policyChanged := added+removed > 0
 	if policyChanged {
 		if !doc.HasGrants() {
 			return AssignmentResult{}, fmt.Errorf("%w: 当前 Policy 没有 grants 数组，系统拒绝在可能改变默认访问行为的情况下自动创建", ErrConflict)
 		}
-		newPolicy, err = doc.ReplaceGrants(grants)
+		newPolicy, err := doc.ReplaceGrants(grants)
 		if err != nil {
 			return AssignmentResult{}, err
 		}
@@ -1273,11 +1509,9 @@ func (s *PeerRelayService) UpdateAssignments(ctx context.Context, username strin
 			}
 			return AssignmentResult{}, fmt.Errorf("%w: Policy 回读结果与提交草稿不同", ErrConflict)
 		}
-		if setErr != nil {
-			// A timeout can leave the commit result unknown; the matching read-back is authoritative.
-		}
+		// A matching read-back remains authoritative if SetPolicy returned a timeout.
 		newPolicy = readBack
-		if err := s.repo.CompletePolicyUpdate(ctx, revision.ID, input.SourceNodeID, newPolicy, newRows, []model.AuditLog{
+		if err := s.repo.CompletePolicyUpdate(ctx, revision.ID, []string{input.SourceNodeID}, newPolicy, newRows, []model.AuditLog{
 			s.auditRecord(username, "policy.commit", revision.ID, beforeHash, afterHash, "success"),
 			s.auditRecord(username, "assignment.update", input.SourceNodeID, jsonString(oldRows), jsonString(newRows), "success"),
 		}); err != nil {
@@ -1299,6 +1533,362 @@ func (s *PeerRelayService) UpdateAssignments(ctx context.Context, username strin
 		return AssignmentResult{}, err
 	}
 	return AssignmentResult{Graph: graph, Added: added, Removed: removed, PolicyChanged: policyChanged}, nil
+}
+
+func (s *PeerRelayService) UpdateAssignmentsBatch(ctx context.Context, username string, input BatchAssignmentInput) (BatchAssignmentResult, error) {
+	if len(input.Changes) == 0 || len(input.Changes) > 500 || len(input.BasePolicyHash) != 64 {
+		return BatchAssignmentResult{}, ErrValidation
+	}
+	changes := append([]AssignmentChange(nil), input.Changes...)
+	sort.Slice(changes, func(i, j int) bool { return changes[i].SourceNodeID < changes[j].SourceNodeID })
+	for i := range changes {
+		if changes[i].SourceNodeID == "" || len(changes[i].SourceNodeID) > 120 {
+			return BatchAssignmentResult{}, ErrValidation
+		}
+		if i > 0 && changes[i-1].SourceNodeID == changes[i].SourceNodeID {
+			return BatchAssignmentResult{}, ErrValidation
+		}
+		seen := make(map[string]bool, len(changes[i].RelayNodeIDs))
+		for _, relayID := range changes[i].RelayNodeIDs {
+			if relayID == "" || len(relayID) > 120 || seen[relayID] {
+				return BatchAssignmentResult{}, ErrValidation
+			}
+			seen[relayID] = true
+		}
+	}
+
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+	doc, _, role, err := s.prepareWrite(ctx, username)
+	if err != nil {
+		return BatchAssignmentResult{}, err
+	}
+	if !s.cfg.PolicyWrites {
+		return BatchAssignmentResult{}, ErrPolicyWrites
+	}
+	if doc.Hash() != input.BasePolicyHash {
+		return BatchAssignmentResult{}, fmt.Errorf("%w: Headscale Policy 已更新，请重新载入画布后再保存", ErrConflict)
+	}
+
+	deviceRows, err := s.repo.Devices(ctx)
+	if err != nil {
+		return BatchAssignmentResult{}, err
+	}
+	deviceByID := indexDevices(deviceRows)
+	relayRows, err := s.repo.Relays(ctx, true)
+	if err != nil {
+		return BatchAssignmentResult{}, err
+	}
+	relayByID := make(map[string]model.RelayNode, len(relayRows))
+	for _, relay := range relayRows {
+		if relay.CancelledAt == nil {
+			relayByID[relay.NodeID] = relay
+		}
+	}
+	allRows, err := s.repo.Assignments(ctx, "")
+	if err != nil {
+		return BatchAssignmentResult{}, err
+	}
+	rowsBySource := make(map[string][]model.RelayAssignment)
+	for _, row := range allRows {
+		rowsBySource[row.SourceNodeID] = append(rowsBySource[row.SourceNodeID], row)
+	}
+
+	desiredBySource := make(map[string]map[string]bool, len(changes))
+	oldBySource := make(map[string]map[string]model.RelayAssignment, len(changes))
+	sources := make(map[string]model.Device, len(changes))
+	for _, change := range changes {
+		source, exists := deviceByID[change.SourceNodeID]
+		if !exists || source.Missing {
+			return BatchAssignmentResult{}, repository.ErrNotFound
+		}
+		if !role.canEditAllDevices && source.UserID != role.user.ID {
+			return BatchAssignmentResult{}, ErrForbidden
+		}
+		if len(deviceView(source).Tags) > 0 && !role.isAdmin {
+			return BatchAssignmentResult{}, ErrForbidden
+		}
+		if !role.isAdmin && !role.canEditAllDevices && !role.selfServiceEnabled {
+			return BatchAssignmentResult{}, ErrForbidden
+		}
+		if _, ipErr := selectorIP(selector(source)); ipErr != nil {
+			return BatchAssignmentResult{}, fmt.Errorf("%w: 源设备缺少可用于 Policy 的 Tailscale IP", ErrValidation)
+		}
+		sources[change.SourceNodeID] = source
+		desired := make(map[string]bool, len(change.RelayNodeIDs))
+		for _, relayID := range change.RelayNodeIDs {
+			if relayID == change.SourceNodeID {
+				return BatchAssignmentResult{}, ErrValidation
+			}
+			desired[relayID] = true
+		}
+		desiredBySource[change.SourceNodeID] = desired
+		oldByRelay := make(map[string]model.RelayAssignment)
+		for _, row := range rowsBySource[change.SourceNodeID] {
+			oldByRelay[row.RelayNodeID] = row
+		}
+		oldBySource[change.SourceNodeID] = oldByRelay
+
+		for relayID := range desired {
+			relay, registered := relayByID[relayID]
+			if !registered {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: 目标设备不是当前注册的 Peer Relay", ErrConflict)
+			}
+			relayDevice, exists := deviceByID[relay.NodeID]
+			if !exists || relayDevice.Missing {
+				if _, hadAssignment := oldByRelay[relayID]; !hadAssignment {
+					return BatchAssignmentResult{}, fmt.Errorf("%w: Relay 设备已删除或无法确认", ErrConflict)
+				}
+				continue
+			}
+			_, hadAssignment := oldByRelay[relayID]
+			exact, inherited, unknown, relationErr := doc.EffectiveRelay(selector(source), selector(relayDevice))
+			if relationErr != nil {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: 无法确认目标授权关系", ErrConflict)
+			}
+			if !relay.Selectable && !hadAssignment && !exact && !inherited && !unknown {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: 已暂停的 Relay 不能新增授权", ErrConflict)
+			}
+			if _, ipErr := selectorIP(selector(relayDevice)); ipErr != nil && !hadAssignment && !exact && !inherited && !unknown {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: Relay 缺少可用于 Policy 的 Tailscale IP", ErrValidation)
+			}
+		}
+
+		// A managed edge whose endpoint is missing or no longer has a usable IP
+		// cannot be safely removed from the complete Policy document.
+		for relayID, old := range oldByRelay {
+			if desired[relayID] || !old.Managed {
+				continue
+			}
+			relayDevice, exists := deviceByID[relayID]
+			if !exists || relayDevice.Missing {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: 无法确认的既有授权不能移除", ErrConflict)
+			}
+			if _, ipErr := selectorIP(selector(relayDevice)); ipErr != nil {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: 无法确认的既有授权不能移除", ErrConflict)
+			}
+		}
+	}
+
+	grants := append([]json.RawMessage(nil), doc.Grants...)
+	newRowsBySource := make(map[string][]model.RelayAssignment, len(changes))
+	added, removed := 0, 0
+	now := s.now().UTC()
+	for _, change := range changes {
+		source := sources[change.SourceNodeID]
+		desired := desiredBySource[change.SourceNodeID]
+		oldByRelay := oldBySource[change.SourceNodeID]
+		for relayID, old := range oldByRelay {
+			if desired[relayID] || !old.Managed {
+				continue
+			}
+			count, countErr := countExact(grants, old.SourceSelector, old.RelaySelector)
+			if countErr != nil {
+				return BatchAssignmentResult{}, countErr
+			}
+			if count > 1 {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: 同一授权在 Policy 中出现多次，不能确定删除哪一条", ErrConflict)
+			}
+			if count == 1 {
+				grants, err = removeOneExact(grants, old.SourceSelector, old.RelaySelector)
+				if err != nil {
+					return BatchAssignmentResult{}, err
+				}
+				removed++
+			}
+		}
+
+		relayIDs := make([]string, 0, len(desired))
+		for relayID := range desired {
+			relayIDs = append(relayIDs, relayID)
+		}
+		sort.Strings(relayIDs)
+		newRows := make([]model.RelayAssignment, 0, len(desired))
+		sourceSelector, _ := selectorIP(selector(source))
+		for _, relayID := range relayIDs {
+			relay := relayByID[relayID]
+			relayDevice, exists := deviceByID[relay.NodeID]
+			old, hadOld := oldByRelay[relayID]
+			if !exists || relayDevice.Missing {
+				if hadOld {
+					newRows = append(newRows, old)
+					continue
+				}
+				return BatchAssignmentResult{}, fmt.Errorf("%w: Relay 设备已删除或无法确认", ErrConflict)
+			}
+			relaySelector, relayIPErr := selectorIP(selector(relayDevice))
+			if relayIPErr != nil {
+				if hadOld {
+					newRows = append(newRows, old)
+					continue
+				}
+				continue
+			}
+			if hadOld && old.Managed {
+				oldCount, countErr := countExact(grants, old.SourceSelector, old.RelaySelector)
+				if countErr != nil {
+					return BatchAssignmentResult{}, countErr
+				}
+				if oldCount > 1 {
+					return BatchAssignmentResult{}, fmt.Errorf("%w: 同一授权在 Policy 中出现多次", ErrConflict)
+				}
+				if oldCount == 1 && old.SourceSelector == sourceSelector && old.RelaySelector == relaySelector {
+					old.UpdatedBy, old.UpdatedAt = username, now
+					newRows = append(newRows, old)
+					continue
+				}
+				if oldCount == 0 {
+					currentCount, currentCountErr := countExact(grants, sourceSelector, relaySelector)
+					if currentCountErr != nil {
+						return BatchAssignmentResult{}, currentCountErr
+					}
+					if currentCount > 1 {
+						return BatchAssignmentResult{}, fmt.Errorf("%w: 目标授权在 Policy 中重复", ErrConflict)
+					}
+					if currentCount == 0 {
+						// Retain the visible exception without silently repairing Policy.
+						newRows = append(newRows, old)
+						continue
+					}
+				}
+				if oldCount == 1 {
+					grants, err = removeOneExact(grants, old.SourceSelector, old.RelaySelector)
+					if err != nil {
+						return BatchAssignmentResult{}, err
+					}
+					removed++
+				}
+			}
+			count, countErr := countExact(grants, sourceSelector, relaySelector)
+			if countErr != nil {
+				return BatchAssignmentResult{}, countErr
+			}
+			if count > 1 {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: 目标授权在 Policy 中重复", ErrConflict)
+			}
+			managed := false
+			if count == 0 {
+				exact, inherited, unknown, matchErr := doc.EffectiveRelay(selector(source), selector(relayDevice))
+				if matchErr != nil {
+					return BatchAssignmentResult{}, matchErr
+				}
+				if !exact && !inherited && !unknown {
+					grant, marshalErr := policy.NewRelayGrant(sourceSelector, relaySelector)
+					if marshalErr != nil {
+						return BatchAssignmentResult{}, marshalErr
+					}
+					grants = append(grants, grant)
+					managed = true
+					added++
+				}
+			}
+			createdAt := now
+			createdBy := username
+			if hadOld {
+				createdAt, createdBy = old.CreatedAt, old.CreatedBy
+			}
+			newRows = append(newRows, model.RelayAssignment{
+				SourceNodeID: change.SourceNodeID, RelayNodeID: relayID,
+				SourceSelector: sourceSelector, RelaySelector: relaySelector, Managed: managed,
+				CreatedBy: createdBy, UpdatedBy: username, CreatedAt: createdAt, UpdatedAt: now,
+			})
+		}
+		newRowsBySource[change.SourceNodeID] = newRows
+	}
+
+	newPolicy := doc.Raw
+	policyChanged := added+removed > 0
+	sourceIDs := make([]string, 0, len(changes))
+	newRows := make([]model.RelayAssignment, 0)
+	for _, change := range changes {
+		sourceIDs = append(sourceIDs, change.SourceNodeID)
+		newRows = append(newRows, newRowsBySource[change.SourceNodeID]...)
+	}
+	changeAudit := s.auditRecord(username, "assignment.batch_update", "multiple-devices", "", jsonString(map[string]any{
+		"sourceNodeIds": sourceIDs, "added": added, "removed": removed,
+	}), "success")
+	if policyChanged {
+		if !doc.HasGrants() {
+			return BatchAssignmentResult{}, fmt.Errorf("%w: 当前 Policy 没有 grants 数组，系统拒绝在可能改变默认访问行为的情况下自动创建", ErrConflict)
+		}
+		newPolicy, err = doc.ReplaceGrants(grants)
+		if err != nil {
+			return BatchAssignmentResult{}, err
+		}
+		updatedDoc, parseErr := policy.Parse(newPolicy)
+		if parseErr != nil {
+			return BatchAssignmentResult{}, parseErr
+		}
+		beforeHash, afterHash := doc.Hash(), updatedDoc.Hash()
+		revision := model.PolicyRevision{
+			ID: uuid.NewString(), Actor: username,
+			Summary: fmt.Sprintf("Peer Relay 批量授权：%d 台设备，新增 %d 条、移除 %d 条", len(changes), added, removed),
+			Before:  doc.Raw, After: newPolicy, BeforeHash: beforeHash, AfterHash: afterHash,
+			Status: "pending", CreatedAt: now,
+		}
+		if err := s.repo.CreateRevisionWithAudit(ctx, revision, s.auditRecord(username, "policy.commit", revision.ID, jsonString(map[string]string{"hash": beforeHash}), jsonString(map[string]string{"hash": afterHash}), "pending")); err != nil {
+			return BatchAssignmentResult{}, err
+		}
+		latestRaw, latestErr := s.headscale.GetPolicy(ctx)
+		if latestErr != nil {
+			finishErr := s.repo.FinishRevisionWithAudit(ctx, revision.ID, "", "failed", s.auditRecord(username, "policy.commit", revision.ID, beforeHash, afterHash, "failed"))
+			if finishErr != nil {
+				return BatchAssignmentResult{}, finishErr
+			}
+			return BatchAssignmentResult{}, fmt.Errorf("%w: 写入前无法再次读取最新 Policy", ErrUnavailable)
+		}
+		latestDoc, parseLatestErr := policy.Parse(latestRaw)
+		if parseLatestErr != nil || latestDoc.Hash() != beforeHash {
+			finishErr := s.repo.FinishRevisionWithAudit(ctx, revision.ID, "", "failed", s.auditRecord(username, "policy.commit", revision.ID, beforeHash, afterHash, "conflict"))
+			if finishErr != nil {
+				return BatchAssignmentResult{}, finishErr
+			}
+			return BatchAssignmentResult{}, fmt.Errorf("%w: Headscale Policy 在提交前再次发生变化", ErrConflict)
+		}
+		setErr := s.headscale.SetPolicy(ctx, newPolicy)
+		readBack, readErr := s.headscale.GetPolicy(ctx)
+		readDoc, parseErr := policy.Parse(readBack)
+		if readErr != nil || parseErr != nil || readDoc.Hash() != afterHash {
+			finishErr := s.repo.FinishRevisionWithAudit(ctx, revision.ID, "", "failed", s.auditRecord(username, "policy.commit", revision.ID, beforeHash, afterHash, "failed"))
+			if finishErr != nil {
+				return BatchAssignmentResult{}, finishErr
+			}
+			if setErr != nil {
+				return BatchAssignmentResult{}, fmt.Errorf("%w: Headscale 未确认 Policy 提交结果", ErrUnavailable)
+			}
+			return BatchAssignmentResult{}, fmt.Errorf("%w: Policy 回读结果与提交草稿不同", ErrConflict)
+		}
+		newPolicy = readBack
+		changeAudit.BeforeJSON = jsonString(map[string]string{"hash": beforeHash})
+		changeAudit.AfterJSON = jsonString(map[string]any{"hash": afterHash, "sourceNodeIds": sourceIDs, "added": added, "removed": removed})
+		if err := s.repo.CompletePolicyUpdate(ctx, revision.ID, sourceIDs, newPolicy, newRows, []model.AuditLog{
+			s.auditRecord(username, "policy.commit", revision.ID, beforeHash, afterHash, "success"),
+			changeAudit,
+		}); err != nil {
+			return BatchAssignmentResult{}, err
+		}
+		_ = s.repo.TrimRevisions(ctx, 30)
+		state, _ := s.repo.SyncState(ctx)
+		state.Key, state.PolicyHash, state.PolicyJSON, state.LastSuccess = "headscale", afterHash, newPolicy, &now
+		state.LastError = ""
+		_ = s.repo.SaveSyncState(ctx, state)
+	} else {
+		if err := s.repo.SaveAssignmentsBatchWithAudit(ctx, sourceIDs, newRows, changeAudit); err != nil {
+			return BatchAssignmentResult{}, err
+		}
+	}
+	finalHash := doc.Hash()
+	if policyChanged {
+		updatedDoc, parseErr := policy.Parse(newPolicy)
+		if parseErr != nil {
+			return BatchAssignmentResult{}, parseErr
+		}
+		finalHash = updatedDoc.Hash()
+	}
+	return BatchAssignmentResult{
+		BasePolicyHash: finalHash, ChangedSourceCount: len(changes), Added: added,
+		Removed: removed, PolicyChanged: policyChanged, SourceNodeIDs: sourceIDs,
+	}, nil
 }
 
 func (s *PeerRelayService) Revisions(ctx context.Context, username string) ([]RevisionView, error) {

@@ -540,6 +540,24 @@ paths:
           $ref: '#/components/responses/ConflictProblem'
         '503':
           $ref: '#/components/responses/UnavailableProblem'
+  /graph/all:
+    get:
+      tags: [peer-relay]
+      summary: 获取当前用户可见的全网授权画布
+      operationId: getCanvasGraph
+      responses:
+        '200':
+          description: 画布节点、授权关系与统一 Policy 基线
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanvasGraph'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
   /graph:
     get:
       tags: [peer-relay]
@@ -588,6 +606,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssignmentResult'
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '503':
+          $ref: '#/components/responses/UnavailableProblem'
+  /assignments/batch:
+    put:
+      tags: [peer-relay]
+      summary: 校验并一次性提交多台源设备的 Peer Relay 授权
+      operationId: updateAssignmentsBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchAssignmentInput'
+      responses:
+        '429':
+          $ref: '#/components/responses/RateLimitedProblem'
+        '200':
+          description: 批量授权已保存并回读确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchAssignmentResult'
         '400':
           $ref: '#/components/responses/ValidationProblem'
         '401':
@@ -982,6 +1032,52 @@ components:
         policyStale: { type: boolean }
         policyWritesEnabled: { type: boolean }
         canEdit: { type: boolean }
+    CanvasRelayRole:
+      type: object
+      required: [nodeId, displayName, selectable, createdBy, createdAt, updatedAt]
+      properties:
+        nodeId: { type: string }
+        displayName: { type: string }
+        region: { type: string }
+        udpPort: { type: integer, nullable: true }
+        publicEndpoint: { type: string }
+        isp: { type: string }
+        description: { type: string }
+        selectable: { type: boolean }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CanvasNode:
+      type: object
+      required: [device, canEdit, canConfirm]
+      properties:
+        device: { $ref: '#/components/schemas/Device' }
+        relay: { $ref: '#/components/schemas/CanvasRelayRole' }
+        canEdit: { type: boolean }
+        canConfirm: { type: boolean }
+    CanvasEdge:
+      type: object
+      required: [sourceNodeId, relayNodeId, source, editable]
+      properties:
+        sourceNodeId: { type: string }
+        relayNodeId: { type: string }
+        source: { type: string, enum: [platform, external, inherited, unknown, exception] }
+        editable: { type: boolean }
+        warning: { type: string }
+    CanvasGraph:
+      type: object
+      required: [nodes, edges, basePolicyHash, policyStale, policyWritesEnabled]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: '#/components/schemas/CanvasNode' }
+        edges:
+          type: array
+          items: { $ref: '#/components/schemas/CanvasEdge' }
+        basePolicyHash: { type: string }
+        policyStale: { type: boolean }
+        policyWritesEnabled: { type: boolean }
     AssignmentInput:
       type: object
       required: [sourceNodeId, relayNodeIds, basePolicyHash]
@@ -1000,6 +1096,37 @@ components:
         added: { type: integer }
         removed: { type: integer }
         policyChanged: { type: boolean }
+    BatchAssignmentChange:
+      type: object
+      required: [sourceNodeId, relayNodeIds]
+      properties:
+        sourceNodeId: { type: string, minLength: 1, maxLength: 120 }
+        relayNodeIds:
+          type: array
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 120 }
+    BatchAssignmentInput:
+      type: object
+      required: [changes, basePolicyHash]
+      properties:
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: '#/components/schemas/BatchAssignmentChange' }
+        basePolicyHash: { type: string, minLength: 64, maxLength: 64 }
+    BatchAssignmentResult:
+      type: object
+      required: [basePolicyHash, changedSourceCount, added, removed, policyChanged, sourceNodeIds]
+      properties:
+        basePolicyHash: { type: string }
+        changedSourceCount: { type: integer }
+        added: { type: integer }
+        removed: { type: integer }
+        policyChanged: { type: boolean }
+        sourceNodeIds:
+          type: array
+          items: { type: string }
     RelayDashboard:
       type: object
       required: [deviceCount, relayCount, selectableRelayCount, assignmentCount, pendingApplicationCount, policyWritesEnabled, currentUser]

@@ -124,6 +124,10 @@ func RegisterPeerRelayRoutes(engine *gin.Engine, peer *service.PeerRelayService)
 		value, err := peer.ReviewApplication(c.Request.Context(), middleware.Principal(c.Request.Context()), c.Param("id"), body.Decision, body.Note, body.Relay)
 		writePeerResponse(c, value, err)
 	})
+	group.GET("/graph/all", func(c *gin.Context) {
+		value, err := peer.CanvasGraph(c.Request.Context(), middleware.Principal(c.Request.Context()))
+		writePeerResponse(c, value, err)
+	})
 	group.GET("/graph", func(c *gin.Context) {
 		sourceNodeID := strings.TrimSpace(c.Query("sourceNodeId"))
 		if sourceNodeID == "" {
@@ -139,6 +143,14 @@ func RegisterPeerRelayRoutes(engine *gin.Engine, peer *service.PeerRelayService)
 			return
 		}
 		value, err := peer.UpdateAssignments(c.Request.Context(), middleware.Principal(c.Request.Context()), body)
+		writePeerResponse(c, value, err)
+	})
+	group.PUT("/assignments/batch", func(c *gin.Context) {
+		var body service.BatchAssignmentInput
+		if !bindPeerJSON(c, &body) {
+			return
+		}
+		value, err := peer.UpdateAssignmentsBatch(c.Request.Context(), middleware.Principal(c.Request.Context()), body)
 		writePeerResponse(c, value, err)
 	})
 	group.POST("/sync", func(c *gin.Context) {

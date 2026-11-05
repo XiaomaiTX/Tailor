@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react"
 import {
   Navigate,
   Outlet,
@@ -47,14 +47,13 @@ import {
   ReviewDialog,
 } from "@/features/peer-relay/components/dialogs"
 import { ApplicationsPage } from "@/features/peer-relay/pages/applications-page"
-import { EditorPage } from "@/features/peer-relay/pages/editor-page"
 import { OverviewPage } from "@/features/peer-relay/pages/overview-page"
 import { PolicyPage } from "@/features/peer-relay/pages/policy-page"
 import { RelaysPage } from "@/features/peer-relay/pages/relays-page"
 import { SettingsPage } from "@/features/peer-relay/pages/settings-page"
 import { errorMessage, relayUpdateInput } from "@/features/peer-relay/utils"
 import type {
-  AssignmentInput,
+  BatchAssignmentInput,
   Device,
   PeerRelaySettingsInput,
   PolicyRevision,
@@ -65,6 +64,12 @@ import type {
 } from "@/api/generated/model"
 import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
+
+const EditorPage = lazy(() =>
+  import("@/features/peer-relay/pages/editor-page").then((module) => ({
+    default: module.EditorPage,
+  }))
+)
 
 export type PeerRelayPageKey =
   "overview" | "editor" | "relays" | "requests" | "policy" | "settings"
@@ -87,14 +92,13 @@ const pagePaths: Record<PeerRelayPageKey, string> = {
 }
 
 const EMPTY_DEVICES: Device[] = []
-const EMPTY_RELAY_IDS: string[] = []
 
 const queryKeys = {
   dashboard: ["peer-relay", "dashboard"] as const,
   devices: ["peer-relay", "devices"] as const,
   relays: ["peer-relay", "relays"] as const,
   applications: ["peer-relay", "applications"] as const,
-  graph: (nodeId: string) => ["peer-relay", "graph", nodeId] as const,
+  canvasGraph: ["peer-relay", "canvas-graph"] as const,
   revisions: ["peer-relay", "revisions"] as const,
   audits: ["peer-relay", "audits"] as const,
   settings: ["peer-relay", "settings"] as const,
@@ -113,12 +117,8 @@ export function PeerRelayConsole() {
     )
     .find((routePage): routePage is PeerRelayPageKey => routePage !== undefined)
   const page = matchedPage ?? "overview"
-  const [selectedDeviceId, setSelectedDeviceId] = useState("")
-  const [search, setSearch] = useState("")
-  const [draftSelection, setDraftSelection] = useState<{
-    key: string
-    relayIds: string[]
-  } | null>(null)
+  const [initialCanvasNodeID, setInitialCanvasNodeID] = useState("")
+  const [canvasSaveResetKey, setCanvasSaveResetKey] = useState(0)
   const [toast, setToast] = useState("")
   const [applicationOpen, setApplicationOpen] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<{
@@ -153,11 +153,6 @@ export function PeerRelayConsole() {
     enabled: Boolean(currentUser),
   })
   const devices = devicesQuery.data ?? EMPTY_DEVICES
-  const activeDeviceId = devices.some(
-    (device) => device.nodeId === selectedDeviceId
-  )
-    ? selectedDeviceId
-    : (devices[0]?.nodeId ?? "")
   const relaysQuery = useQuery({
     queryKey: [...queryKeys.relays, canManageRelays],
     queryFn: () => peerRelayApi.relays(canManageRelays),
@@ -171,10 +166,10 @@ export function PeerRelayConsole() {
       currentUser && (currentUser.canApply || currentUser.isReviewer)
     ),
   })
-  const graphQuery = useQuery({
-    queryKey: queryKeys.graph(activeDeviceId),
-    queryFn: () => peerRelayApi.graph(activeDeviceId),
-    enabled: Boolean(currentUser && activeDeviceId),
+  const canvasGraphQuery = useQuery({
+    queryKey: queryKeys.canvasGraph,
+    queryFn: peerRelayApi.canvasGraph,
+    enabled: Boolean(currentUser && page === "editor"),
   })
   const revisionsQuery = useQuery({
     queryKey: queryKeys.revisions,
@@ -196,37 +191,6 @@ export function PeerRelayConsole() {
     queryFn: peerRelayApi.settings,
     enabled: Boolean(isAdmin && page === "settings"),
   })
-  const graph = graphQuery.data
-  const graphDraftKey = graph
-    ? `${graph.device.nodeId}:${graph.basePolicyHash}`
-    : ""
-  const baselineRelayIds = useMemo(
-    () =>
-      graph?.relays
-        .filter((item) =>
-          ["platform", "external", "inherited", "unknown"].includes(item.source)
-        )
-        .map((item) => item.relayNodeId) ?? EMPTY_RELAY_IDS,
-    [graph]
-  )
-  const draftRelayIds =
-    draftSelection?.key === graphDraftKey
-      ? draftSelection.relayIds
-      : baselineRelayIds
-  const updateDraftRelayIds = (
-    update: string[] | ((current: string[]) => string[])
-  ) => {
-    if (!graphDraftKey) return
-    setDraftSelection((current) => {
-      const relayIds =
-        current?.key === graphDraftKey ? current.relayIds : baselineRelayIds
-      return {
-        key: graphDraftKey,
-        relayIds: typeof update === "function" ? update(relayIds) : update,
-      }
-    })
-  }
-
   useEffect(() => {
     if (!toast) return
     const timeout = window.setTimeout(() => setToast(""), 3200)
@@ -239,7 +203,7 @@ export function PeerRelayConsole() {
       queryClient.invalidateQueries({ queryKey: queryKeys.devices }),
       queryClient.invalidateQueries({ queryKey: queryKeys.relays }),
       queryClient.invalidateQueries({ queryKey: queryKeys.applications }),
-      queryClient.invalidateQueries({ queryKey: ["peer-relay", "graph"] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph }),
     ])
   }
 
@@ -259,18 +223,22 @@ export function PeerRelayConsole() {
     },
   })
 
-  const saveMutation = useMutation({
-    mutationFn: (input: AssignmentInput) => peerRelayApi.saveAssignments(input),
-    onSuccess: async (result) => {
-      queryClient.setQueryData(
-        queryKeys.graph(result.graph.device.nodeId),
-        result.graph
-      )
+  const canvasSaveMutation = useMutation({
+    mutationFn: (input: BatchAssignmentInput) =>
+      peerRelayApi.saveAssignmentsBatch(input),
+    onSuccess: async () => {
+      setCanvasSaveResetKey((current) => current + 1)
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
         queryClient.invalidateQueries({ queryKey: queryKeys.audits }),
       ])
       setToast(t("relay.editor.saved"))
+    },
+    onError: async () => {
+      // A stale-policy conflict should refresh the comparison baseline while
+      // the canvas keeps its in-memory draft for review.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.canvasGraph })
     },
   })
 
@@ -358,38 +326,6 @@ export function PeerRelayConsole() {
     },
   })
 
-  const filteredDevices = useMemo(() => {
-    const normalized = search.trim().toLocaleLowerCase()
-    if (!normalized) return devices
-    return devices.filter((device) =>
-      [
-        device.hostname,
-        device.givenName,
-        device.username,
-        device.ipv4,
-        device.ipv6,
-        ...device.tags,
-      ]
-        .filter(Boolean)
-        .some((value) => value!.toLocaleLowerCase().includes(normalized))
-    )
-  }, [devices, search])
-
-  const dirty = useMemo(() => {
-    if (!graph) return false
-    const baseline = graph.relays
-      .filter((item) =>
-        ["platform", "external", "inherited", "unknown"].includes(item.source)
-      )
-      .map((item) => item.relayNodeId)
-      .sort()
-    const draft = [...draftRelayIds].sort()
-    return (
-      baseline.length !== draft.length ||
-      baseline.some((id, index) => id !== draft[index])
-    )
-  }, [draftRelayIds, graph])
-
   const userApplications = applicationsQuery.data ?? []
   const pendingApplications = userApplications.filter(
     (item) => item.status === "pending"
@@ -434,48 +370,12 @@ export function PeerRelayConsole() {
   ]
 
   const openEditor = (deviceId?: string) => {
-    if (deviceId) setSelectedDeviceId(deviceId)
+    setInitialCanvasNodeID(deviceId ?? "")
     navigate(pagePaths.editor)
   }
 
   const navigateToPage = (nextPage: PeerRelayPageKey) => {
     navigate(pagePaths[nextPage])
-  }
-
-  const toggleRelay = (relayId: string) => {
-    updateDraftRelayIds((current) =>
-      current.includes(relayId)
-        ? current.filter((item) => item !== relayId)
-        : [...current, relayId]
-    )
-  }
-
-  const saveDraft = () => {
-    if (!graph || !activeDeviceId) return
-    const removed = graph.relays
-      .filter(
-        (item) =>
-          item.source === "platform" &&
-          !draftRelayIds.includes(item.relayNodeId)
-      )
-      .map((item) => item.relay.displayName)
-    const added = graph.relays
-      .filter(
-        (item) => item.source === "" && draftRelayIds.includes(item.relayNodeId)
-      )
-      .map((item) => item.relay.displayName)
-    const summary = [
-      added.length ? `${t("relay.editor.summary")}: +${added.length}` : "",
-      removed.length ? `−${removed.length}` : "",
-    ]
-      .filter(Boolean)
-      .join("  ")
-    if (summary) setToast(summary)
-    saveMutation.mutate({
-      sourceNodeId: activeDeviceId,
-      relayNodeIds: draftRelayIds,
-      basePolicyHash: graph.basePolicyHash,
-    })
   }
 
   const pageTitle =
@@ -539,25 +439,28 @@ export function PeerRelayConsole() {
       />
     ),
     editor: (
-      <EditorPage
-        devices={filteredDevices}
-        graph={graph}
-        selectedDeviceId={activeDeviceId}
-        draftRelayIds={draftRelayIds}
-        search={search}
-        dirty={dirty}
-        isLoading={graphQuery.isLoading || devicesQuery.isLoading}
-        savePending={saveMutation.isPending}
-        saveError={saveMutation.error}
-        canApply={canApply}
-        t={t}
-        onSearch={setSearch}
-        onSelectDevice={setSelectedDeviceId}
-        onToggleRelay={toggleRelay}
-        onSave={saveDraft}
-        onDiscard={() => graph && updateDraftRelayIds(baselineRelayIds)}
-        onApply={() => setApplicationOpen(true)}
-      />
+      <Suspense
+        fallback={
+          <div className="p-8 text-center text-xs text-muted-foreground">
+            {t("relay.common.loading")}
+          </div>
+        }
+      >
+        <EditorPage
+          key={currentUser?.username ?? ""}
+          graph={canvasGraphQuery.data}
+          username={currentUser?.username ?? ""}
+          initialNodeID={initialCanvasNodeID}
+          isLoading={canvasGraphQuery.isLoading}
+          loadError={canvasGraphQuery.error}
+          savePending={canvasSaveMutation.isPending}
+          saveError={canvasSaveMutation.error}
+          resetKey={canvasSaveResetKey}
+          t={t}
+          onReload={() => canvasGraphQuery.refetch()}
+          onSave={(input) => canvasSaveMutation.mutate(input)}
+        />
+      </Suspense>
     ),
     relays: (
       <RelaysPage
@@ -652,7 +555,6 @@ export function PeerRelayConsole() {
             <div className="flex min-w-0 items-center gap-3">
               <SidebarTrigger
                 aria-label={t("relay.sidebar.toggle")}
-                title={t("relay.sidebar.toggle")}
                 className="shrink-0"
               />
               <Separator orientation="vertical" className="h-6" />
@@ -882,11 +784,7 @@ export function PeerRelayConsole() {
   )
 }
 
-export function PeerRelayRoutePage({
-  page,
-}: {
-  page: PeerRelayPageKey
-}) {
+export function PeerRelayRoutePage({ page }: { page: PeerRelayPageKey }) {
   const context = useOutletContext<PeerRelayConsoleRouteContext>()
   const requiresAdmin = page === "policy" || page === "settings"
   const requiresApplicationAccess = page === "requests"
