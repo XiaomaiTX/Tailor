@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import {
+  Navigate,
+  Outlet,
+  useMatches,
+  useNavigate,
+  useOutletContext,
+} from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Activity,
@@ -59,8 +66,25 @@ import type {
 import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
 
-type PageKey =
+export type PeerRelayPageKey =
   "overview" | "editor" | "relays" | "requests" | "policy" | "settings"
+
+type PeerRelayConsoleRouteContext = {
+  pages: Record<PeerRelayPageKey, ReactNode>
+  isAdmin: boolean
+  isReviewer: boolean
+  canApply: boolean
+  authorizationLoading: boolean
+}
+
+const pagePaths: Record<PeerRelayPageKey, string> = {
+  overview: "/",
+  editor: "/editor",
+  relays: "/relays",
+  requests: "/requests",
+  policy: "/policy",
+  settings: "/settings",
+}
 
 const EMPTY_DEVICES: Device[] = []
 const EMPTY_RELAY_IDS: string[] = []
@@ -79,7 +103,16 @@ const queryKeys = {
 export function PeerRelayConsole() {
   const { t, locale } = useI18n()
   const queryClient = useQueryClient()
-  const [page, setPage] = useState<PageKey>("overview")
+  const navigate = useNavigate()
+  const matches = useMatches()
+  const matchedPage = matches
+    .map(
+      (match) =>
+        (match.handle as { peerRelayPage?: PeerRelayPageKey } | undefined)
+          ?.peerRelayPage
+    )
+    .find((routePage): routePage is PeerRelayPageKey => routePage !== undefined)
+  const page = matchedPage ?? "overview"
   const [selectedDeviceId, setSelectedDeviceId] = useState("")
   const [search, setSearch] = useState("")
   const [draftSelection, setDraftSelection] = useState<{
@@ -222,7 +255,7 @@ export function PeerRelayConsole() {
     mutationFn: peerRelayApi.logout,
     onSuccess: () => {
       queryClient.clear()
-      window.location.assign("/login")
+      navigate("/login", { replace: true })
     },
   })
 
@@ -362,7 +395,7 @@ export function PeerRelayConsole() {
     (item) => item.status === "pending"
   )
   const navItems: {
-    key: PageKey
+    key: PeerRelayPageKey
     label: string
     icon: LucideIcon
     badge?: number
@@ -402,7 +435,11 @@ export function PeerRelayConsole() {
 
   const openEditor = (deviceId?: string) => {
     if (deviceId) setSelectedDeviceId(deviceId)
-    setPage("editor")
+    navigate(pagePaths.editor)
+  }
+
+  const navigateToPage = (nextPage: PeerRelayPageKey) => {
+    navigate(pagePaths[nextPage])
   }
 
   const toggleRelay = (relayId: string) => {
@@ -484,6 +521,114 @@ export function PeerRelayConsole() {
   const apiError = dashboardQuery.error
   const configError =
     apiError instanceof ApiProblemError && apiError.problem.status === 503
+  const routePages: Record<PeerRelayPageKey, ReactNode> = {
+    overview: (
+      <OverviewPage
+        dashboard={dashboard}
+        devices={devices}
+        relays={relays}
+        applications={pendingApplications}
+        isAdmin={isAdmin}
+        isLoading={dashboardQuery.isLoading}
+        locale={locale}
+        t={t}
+        onOpenEditor={openEditor}
+        onOpenApplications={() => navigateToPage("requests")}
+        onSync={() => syncMutation.mutate()}
+        syncPending={syncMutation.isPending}
+      />
+    ),
+    editor: (
+      <EditorPage
+        devices={filteredDevices}
+        graph={graph}
+        selectedDeviceId={activeDeviceId}
+        draftRelayIds={draftRelayIds}
+        search={search}
+        dirty={dirty}
+        isLoading={graphQuery.isLoading || devicesQuery.isLoading}
+        savePending={saveMutation.isPending}
+        saveError={saveMutation.error}
+        canApply={canApply}
+        t={t}
+        onSearch={setSearch}
+        onSelectDevice={setSelectedDeviceId}
+        onToggleRelay={toggleRelay}
+        onSave={saveDraft}
+        onDiscard={() => graph && updateDraftRelayIds(baselineRelayIds)}
+        onApply={() => setApplicationOpen(true)}
+      />
+    ),
+    relays: (
+      <RelaysPage
+        relays={relays}
+        canManageRelays={canManageRelays}
+        isLoading={relaysQuery.isLoading}
+        t={t}
+        onToggle={(relay) =>
+          relayUpdateMutation.mutate({
+            nodeId: relay.nodeId,
+            input: relayUpdateInput(relay, !relay.selectable),
+          })
+        }
+        onEdit={setRelayEditTarget}
+        onCancel={setRelayCancelTarget}
+      />
+    ),
+    requests: (
+      <ApplicationsPage
+        applications={userApplications}
+        devices={devices.filter(
+          (device) =>
+            device.username.toLocaleLowerCase() ===
+              currentUser?.username?.toLocaleLowerCase() &&
+            device.tags.length === 0 &&
+            !device.missing
+        )}
+        isReviewer={isReviewer}
+        canApply={canApply}
+        isLoading={applicationsQuery.isLoading}
+        t={t}
+        onCreate={() => setApplicationOpen(true)}
+        onCancel={(application) =>
+          cancelApplicationMutation.mutate(application.id)
+        }
+        onReview={(application, decision) => {
+          setReviewNote("")
+          setReviewTarget({ application, decision })
+        }}
+      />
+    ),
+    policy: (
+      <PolicyPage
+        revisions={revisionsQuery.data ?? []}
+        revisionDetail={revisionDetailQuery.data}
+        revisionDetailLoading={revisionDetailQuery.isLoading}
+        revisionDetailError={revisionDetailQuery.error}
+        devices={devices}
+        relays={relays}
+        audits={auditsQuery.data ?? []}
+        isLoading={revisionsQuery.isLoading || auditsQuery.isLoading}
+        t={t}
+        locale={locale}
+        onRollback={setRollbackTarget}
+        onViewRevision={(revision) => setRevisionDetailId(revision.id)}
+      />
+    ),
+    settings: (
+      <SettingsPage
+        key={`${settingsQuery.data?.updatedBy ?? "loading"}:${settingsQuery.data?.updatedAt ?? ""}`}
+        settings={settingsQuery.data}
+        isLoading={settingsQuery.isLoading}
+        error={settingsQuery.error}
+        isPending={settingsMutation.isPending}
+        saveError={settingsMutation.error}
+        locale={locale}
+        t={t}
+        onSave={(input) => settingsMutation.mutate(input)}
+      />
+    ),
+  }
 
   if (apiError instanceof ApiProblemError && apiError.problem.status === 401) {
     return <OidcLoginPage />
@@ -497,7 +642,7 @@ export function PeerRelayConsole() {
         currentUser={currentUser}
         syncError={dashboard?.syncError}
         isLoggingOut={logoutMutation.isPending}
-        onNavigate={setPage}
+        onNavigate={navigateToPage}
         onLogout={() => logoutMutation.mutate()}
         variant="inset"
       />
@@ -613,117 +758,15 @@ export function PeerRelayConsole() {
             </div>
           ) : null}
 
-          {page === "overview" ? (
-            <OverviewPage
-              dashboard={dashboard}
-              devices={devices}
-              relays={relays}
-              applications={pendingApplications}
-              isAdmin={isAdmin}
-              isLoading={dashboardQuery.isLoading}
-              locale={locale}
-              t={t}
-              onOpenEditor={openEditor}
-              onOpenApplications={() => setPage("requests")}
-              onSync={() => syncMutation.mutate()}
-              syncPending={syncMutation.isPending}
-            />
-          ) : null}
-
-          {page === "editor" ? (
-            <EditorPage
-              devices={filteredDevices}
-              graph={graph}
-              selectedDeviceId={activeDeviceId}
-              draftRelayIds={draftRelayIds}
-              search={search}
-              dirty={dirty}
-              isLoading={graphQuery.isLoading || devicesQuery.isLoading}
-              savePending={saveMutation.isPending}
-              saveError={saveMutation.error}
-              canApply={canApply}
-              t={t}
-              onSearch={setSearch}
-              onSelectDevice={setSelectedDeviceId}
-              onToggleRelay={toggleRelay}
-              onSave={saveDraft}
-              onDiscard={() => graph && updateDraftRelayIds(baselineRelayIds)}
-              onApply={() => setApplicationOpen(true)}
-            />
-          ) : null}
-
-          {page === "relays" ? (
-            <RelaysPage
-              relays={relays}
-              canManageRelays={canManageRelays}
-              isLoading={relaysQuery.isLoading}
-              t={t}
-              onToggle={(relay) =>
-                relayUpdateMutation.mutate({
-                  nodeId: relay.nodeId,
-                  input: relayUpdateInput(relay, !relay.selectable),
-                })
-              }
-              onEdit={setRelayEditTarget}
-              onCancel={setRelayCancelTarget}
-            />
-          ) : null}
-
-          {page === "requests" ? (
-            <ApplicationsPage
-              applications={userApplications}
-              devices={devices.filter(
-                (device) =>
-                  device.username.toLocaleLowerCase() ===
-                    currentUser?.username?.toLocaleLowerCase() &&
-                  device.tags.length === 0 &&
-                  !device.missing
-              )}
-              isReviewer={isReviewer}
-              canApply={canApply}
-              isLoading={applicationsQuery.isLoading}
-              t={t}
-              onCreate={() => setApplicationOpen(true)}
-              onCancel={(application) =>
-                cancelApplicationMutation.mutate(application.id)
-              }
-              onReview={(application, decision) => {
-                setReviewNote("")
-                setReviewTarget({ application, decision })
-              }}
-            />
-          ) : null}
-
-          {page === "policy" && isAdmin ? (
-            <PolicyPage
-              revisions={revisionsQuery.data ?? []}
-              revisionDetail={revisionDetailQuery.data}
-              revisionDetailLoading={revisionDetailQuery.isLoading}
-              revisionDetailError={revisionDetailQuery.error}
-              devices={devices}
-              relays={relays}
-              audits={auditsQuery.data ?? []}
-              isLoading={revisionsQuery.isLoading || auditsQuery.isLoading}
-              t={t}
-              locale={locale}
-              onRollback={setRollbackTarget}
-              onViewRevision={(revision) => setRevisionDetailId(revision.id)}
-            />
-          ) : null}
-
-          {page === "settings" && isAdmin ? (
-            <SettingsPage
-              key={`${settingsQuery.data?.updatedBy ?? "loading"}:${settingsQuery.data?.updatedAt ?? ""}`}
-              settings={settingsQuery.data}
-              isLoading={settingsQuery.isLoading}
-              error={settingsQuery.error}
-              isPending={settingsMutation.isPending}
-              saveError={settingsMutation.error}
-              locale={locale}
-              t={t}
-              onSave={(input) => settingsMutation.mutate(input)}
-            />
-          ) : null}
+          <Outlet
+            context={{
+              pages: routePages,
+              isAdmin,
+              isReviewer,
+              canApply,
+              authorizationLoading: dashboardQuery.isLoading,
+            }}
+          />
         </div>
       </SidebarInset>
 
@@ -837,4 +880,23 @@ export function PeerRelayConsole() {
       ) : null}
     </SidebarProvider>
   )
+}
+
+export function PeerRelayRoutePage({
+  page,
+}: {
+  page: PeerRelayPageKey
+}) {
+  const context = useOutletContext<PeerRelayConsoleRouteContext>()
+  const requiresAdmin = page === "policy" || page === "settings"
+  const requiresApplicationAccess = page === "requests"
+  const canAccess =
+    (!requiresAdmin || context.isAdmin) &&
+    (!requiresApplicationAccess || context.canApply || context.isReviewer)
+
+  if (!canAccess) {
+    return context.authorizationLoading ? null : <Navigate to="/" replace />
+  }
+
+  return context.pages[page]
 }

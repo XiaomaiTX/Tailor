@@ -1,10 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
+import { createMemoryRouter, RouterProvider } from "react-router-dom"
 import { ApiProblemError } from "@/api/http"
 import { ThemeProvider } from "@/components/theme-provider"
 import { I18nProvider } from "@/i18n"
 import { usePreferenceStore } from "@/stores/preference-store"
-import { PeerRelayConsole } from "./peer-relay-console"
+import {
+  PeerRelayConsole,
+  PeerRelayRoutePage,
+} from "./peer-relay-console"
 
 const mocks = vi.hoisted(() => ({ dashboard: vi.fn() }))
 
@@ -17,6 +21,35 @@ vi.mock("@/api/peer-relay", () => ({
     }
   ),
 }))
+
+function renderConsole(queryClient: QueryClient) {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: <PeerRelayConsole />,
+        children: [
+          {
+            index: true,
+            handle: { peerRelayPage: "overview" },
+            element: <PeerRelayRoutePage page="overview" />,
+          },
+        ],
+      },
+    ],
+    { initialEntries: ["/"] }
+  )
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <I18nProvider>
+          <RouterProvider router={router} />
+        </I18nProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  )
+}
 
 describe("PeerRelayConsole authentication", () => {
   beforeEach(() => {
@@ -35,15 +68,7 @@ describe("PeerRelayConsole authentication", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <I18nProvider>
-            <PeerRelayConsole />
-          </I18nProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    )
+    renderConsole(queryClient)
 
     expect(
       await screen.findByRole("link", { name: /使用 SSO 登录/ })
@@ -72,15 +97,7 @@ describe("PeerRelayConsole authentication", () => {
       defaultOptions: { queries: { retry: false } },
     })
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <I18nProvider>
-            <PeerRelayConsole />
-          </I18nProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    )
+    renderConsole(queryClient)
 
     expect(await screen.findByText("alice")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /使用 SSO 登录/ })).toBeNull()

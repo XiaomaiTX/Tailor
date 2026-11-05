@@ -1,1 +1,4 @@
-export { PeerRelayConsole as default } from "@/features/peer-relay/peer-relay-console"
+export {
+  PeerRelayConsole as default,
+  PeerRelayRoutePage,
+} from "@/features/peer-relay/peer-relay-console"
