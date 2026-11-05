@@ -3,8 +3,10 @@ import { CircleHelp, Server } from "lucide-react"
 
 import type {
   Device,
+  Relay,
   RelayApplication,
   RelayRegistration,
+  RelayUpdate,
   ReviewInput,
 } from "@/api/generated/model"
 import { Button } from "@/components/ui/button"
@@ -209,6 +211,7 @@ export function ApplicationDialog({
 
 export function RelayRegistrationDialog({
   devices,
+  relay,
   t,
   isPending,
   error,
@@ -216,21 +219,26 @@ export function RelayRegistrationDialog({
   onSubmit,
 }: {
   devices: Device[]
+  relay?: Relay
   t: (key: string) => string
   isPending: boolean
   error: Error | null
   onClose: () => void
-  onSubmit: (input: RelayRegistration) => void
+  onSubmit: (input: RelayRegistration | RelayUpdate) => void
 }) {
-  const [nodeId, setNodeId] = useState(devices[0]?.nodeId ?? "")
-  const [displayName, setDisplayName] = useState("")
-  const [region, setRegion] = useState("")
-  const [port, setPort] = useState("")
-  const [endpoint, setEndpoint] = useState("")
-  const [isp, setIsp] = useState("")
-  const [description, setDescription] = useState("")
-  const [selectable, setSelectable] = useState(true)
-  const title = t("relay.relays.add")
+  const [nodeId, setNodeId] = useState(
+    relay?.nodeId ?? devices[0]?.nodeId ?? ""
+  )
+  const [displayName, setDisplayName] = useState(relay?.displayName ?? "")
+  const [region, setRegion] = useState(relay?.region ?? "")
+  const [port, setPort] = useState(
+    relay?.udpPort ? String(relay.udpPort) : ""
+  )
+  const [endpoint, setEndpoint] = useState(relay?.publicEndpoint ?? "")
+  const [isp, setIsp] = useState(relay?.isp ?? "")
+  const [description, setDescription] = useState(relay?.description ?? "")
+  const [selectable, setSelectable] = useState(relay?.selectable ?? true)
+  const title = t(relay ? "relay.relays.editTitle" : "relay.relays.add")
 
   return (
     <Dialog
@@ -239,7 +247,7 @@ export function RelayRegistrationDialog({
       onOpenChange={(open) => !open && onClose()}
     >
       <DialogHeader label={title} />
-      {devices.length === 0 ? (
+      {!relay && devices.length === 0 ? (
         <EmptyState
           title={t("relay.relays.noEligibleDevice")}
           icon={Server}
@@ -249,8 +257,7 @@ export function RelayRegistrationDialog({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault()
-            onSubmit({
-              nodeId,
+            const metadata = {
               displayName,
               region: optional(region),
               udpPort: port ? Number(port) : undefined,
@@ -258,20 +265,32 @@ export function RelayRegistrationDialog({
               isp: optional(isp),
               description: optional(description),
               selectable,
-            })
+            }
+            onSubmit(relay ? metadata : { nodeId, ...metadata })
           }}
         >
-          <Field label={t("relay.relays.node")}>
-            <OptionSelect
-              value={nodeId}
-              onValueChange={setNodeId}
-              ariaLabel={t("relay.relays.node")}
-              options={devices.map((device) => ({
-                value: device.nodeId,
-                label: `${device.givenName || device.hostname} · ${device.username}`,
-              }))}
-            />
-          </Field>
+          {relay ? (
+            <Field label={t("relay.relays.node")}>
+              <Input
+                value={`${
+                  relay.device.givenName || relay.device.hostname
+                } · ${relay.device.username}`}
+                readOnly
+              />
+            </Field>
+          ) : (
+            <Field label={t("relay.relays.node")}>
+              <OptionSelect
+                value={nodeId}
+                onValueChange={setNodeId}
+                ariaLabel={t("relay.relays.node")}
+                options={devices.map((device) => ({
+                  value: device.nodeId,
+                  label: `${device.givenName || device.hostname} · ${device.username}`,
+                }))}
+              />
+            </Field>
+          )}
           <Field label={t("relay.relays.displayName")}>
             <Input
               value={displayName}
@@ -319,9 +338,16 @@ export function RelayRegistrationDialog({
               maxLength={2000}
             />
           </Field>
-          <Checkbox isSelected={selectable} onChange={setSelectable}>
-            {t("relay.relays.selectable")}
-          </Checkbox>
+          <div className="flex min-w-0 items-start gap-2">
+            <Checkbox
+              aria-label={t("relay.relays.selectable")}
+              isSelected={selectable}
+              onChange={setSelectable}
+            />
+            <span className="min-w-0 text-xs leading-5">
+              {t("relay.relays.selectable")}
+            </span>
+          </div>
           {error ? (
             <p className="text-sm text-destructive">
               {errorMessage(error, t("errors.unknown"))}
@@ -330,7 +356,9 @@ export function RelayRegistrationDialog({
           <DialogActions
             cancelLabel={t("relay.common.cancel")}
             confirmLabel={
-              isPending ? t("relay.editor.saving") : t("relay.relays.save")
+              isPending
+                ? t("relay.editor.saving")
+                : t(relay ? "relay.relays.saveChanges" : "relay.relays.save")
             }
             isPending={isPending}
             onClose={onClose}
@@ -407,13 +435,16 @@ export function ReviewDialog({
         </Field>
       ) : (
         <>
-          <Checkbox
-            className="mt-4"
-            isSelected={overrideEnabled}
-            onChange={setOverrideEnabled}
-          >
-            {t("relay.applications.overrideMetadata")}
-          </Checkbox>
+          <div className="mt-4 flex min-w-0 items-start gap-2">
+            <Checkbox
+              aria-label={t("relay.applications.overrideMetadata")}
+              isSelected={overrideEnabled}
+              onChange={setOverrideEnabled}
+            />
+            <span className="min-w-0 text-xs leading-5">
+              {t("relay.applications.overrideMetadata")}
+            </span>
+          </div>
           {overrideEnabled ? (
             <div className="mt-3 space-y-4 border border-border p-4">
               <p className="text-xs leading-5 text-muted-foreground">

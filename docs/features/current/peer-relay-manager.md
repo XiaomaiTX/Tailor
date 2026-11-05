@@ -2,7 +2,7 @@
 status: active
 doc_type: feature
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - api/openapi/openapi.yaml
   - backend/internal/service/peer_relay.go
@@ -10,6 +10,10 @@ source_of_truth:
   - frontend/src/features/peer-relay/peer-relay-console.tsx
   - frontend/src/features/peer-relay/pages/
   - frontend/src/features/peer-relay/components/
+  - frontend/src/components/app-sidebar.tsx
+  - frontend/src/components/nav-main.tsx
+  - frontend/src/components/nav-user.tsx
+  - frontend/src/components/ui/sidebar.tsx
 ---
 
 # Peer Relay Manager
@@ -42,7 +46,7 @@ The provider accepts the response shapes currently used by Headscale REST (`/api
 
 ## Relay Registration And Applications
 
-- An admin can register one of their eligible Headscale nodes directly, edit relay metadata, pause selection, or cancel registration.
+- A relay manager can register an eligible Headscale node directly, edit a registered relay's display name, region, UDP port, public endpoint, ISP, description, and selection availability, or cancel registration.
 - An eligible user can submit an application for one of their own untagged nodes. A SQLite partial unique index enforces at most one pending application per node across API processes. Admins can set a per-device cooldown after rejection.
 - Review decisions are `approved` or `rejected`; a review can include a note and optional Relay metadata override. Approval creates the relay and completes the application in one SQLite transaction.
 - Applicants can cancel their own pending request. A successful sync invalidates a pending request when its device is removed or no longer belongs to the applicant.
@@ -78,7 +82,7 @@ The API contract is `api/openapi/openapi.yaml`; routes are indexed in `docs/api/
 
 ## Frontend Module Boundaries
 
-`frontend/src/App.tsx` is the SPA entry and delegates to the Peer Relay console. The console owns shared navigation, React Query state, and mutation orchestration; each user-facing view is a separate module under `frontend/src/features/peer-relay/pages/`. Feature dialogs and presentation helpers live under the feature's `components/` directory. Shared controls under `frontend/src/components/ui/` follow the configured shadcn aria-sera style and consume the global theme tokens in `frontend/src/index.css`.
+`frontend/src/App.tsx` is the SPA entry and delegates to the Peer Relay console. The console owns navigation state, permission-filtered navigation data, React Query state, and mutation orchestration. `frontend/src/components/app-sidebar.tsx` renders the responsive collapsible sidebar, `nav-main.tsx` renders page choices, and `nav-user.tsx` renders account controls. Each user-facing view remains a separate module under `frontend/src/features/peer-relay/pages/`. Feature dialogs and presentation helpers live under the feature's `components/` directory. Shared controls under `frontend/src/components/ui/` follow the configured shadcn aria-sera style and consume the global theme tokens in `frontend/src/index.css`.
 
 ## Known MVP Limits
 

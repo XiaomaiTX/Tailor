@@ -2,10 +2,12 @@
 status: active
 doc_type: standard
 owner: engineering
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-05
 source_of_truth:
   - docs/ai/repo-rules.md
   - docs/standards/dependency-layering.md
+  - frontend/components.json
+  - frontend/package.json
 ---
 
 # Coding Conventions
@@ -29,6 +31,14 @@ source_of_truth:
 - 前端业务调用必须走 `@/api/generated/client` 暴露的 React Query hooks
 - 公共契约放在 `api/openapi/openapi.yaml`，不在页面、handler 或单个特性内部
 - 生成代码（`backend/internal/api/generated/`、`frontend/src/api/generated/`）不可手改
+
+## shadcn/ui Components
+
+- `frontend/src/components/ui/` 中的组件必须由官方 `shadcn` CLI 从 shadcn/ui 官方 registry 添加或更新，并遵循 `frontend/components.json` 的项目配置（当前 style 为 `aria-sera`）。
+- 新增组件使用项目安装的 CLI，例如在 `frontend/` 中运行 `pnpm exec shadcn add checkbox`；不得手工新建、复制第三方实现或从其他 registry 安装到此目录。
+- 不得手工修改该目录内组件的 Tailwind 类、CSS、尺寸、颜色、间距、排版、边框或其他视觉表现。页面布局和呈现需求应在调用组件的页面或 feature 层组合；基础组件需要更新时，先用 CLI 的 `--diff` 检查，再通过官方 CLI 更新。
+- 为满足项目集成需要而增加的非视觉适配（如国际化标签或可访问名称）必须保持最小范围，且不得改写官方视觉样式。
+- CLI 生成或更新后，审阅其文件差异，并按前端验证规范运行适用检查。
 
 ## Error Handling
 

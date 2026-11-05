@@ -4,15 +4,10 @@ import {
   Activity,
   Bell,
   Check,
-  ChevronDown,
-  ChevronRight,
   GitBranch,
-  LogOut,
-  Network,
   Plus,
   RadioTower,
   RefreshCw,
-  ShieldCheck,
   SlidersHorizontal,
   TriangleAlert,
   Waypoints,
@@ -20,11 +15,24 @@ import {
 } from "lucide-react"
 import { peerRelayApi } from "@/api/peer-relay"
 import { ApiProblemError } from "@/api/http"
+import { AppSidebar } from "@/components/app-sidebar"
 import { LanguageToggle } from "@/components/language-toggle"
 import { ModeToggle } from "@/components/mode-toggle"
 import { OidcLoginPage } from "@/features/auth/oidc-login-page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
+import { Separator } from "@/components/ui/separator"
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 import {
   ConfirmDialog,
   ApplicationDialog,
@@ -86,6 +94,7 @@ export function PeerRelayConsole() {
   } | null>(null)
   const [reviewNote, setReviewNote] = useState("")
   const [relayFormOpen, setRelayFormOpen] = useState(false)
+  const [relayEditTarget, setRelayEditTarget] = useState<Relay | null>(null)
   const [relayCancelTarget, setRelayCancelTarget] = useState<Relay | null>(null)
   const [rollbackTarget, setRollbackTarget] = useState<PolicyRevision | null>(
     null
@@ -273,8 +282,13 @@ export function PeerRelayConsole() {
   const relayUpdateMutation = useMutation({
     mutationFn: ({ nodeId, input }: { nodeId: string; input: RelayUpdate }) =>
       peerRelayApi.updateRelay(nodeId, input),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.relays }),
+    onSuccess: async () => {
+      setRelayEditTarget(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.relays }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard }),
+      ])
+    },
   })
 
   const relayCancelMutation = useMutation({
@@ -476,354 +490,242 @@ export function PeerRelayConsole() {
   }
 
   return (
-    <div className="min-h-svh bg-background text-foreground">
-      <div className="mx-auto flex min-h-svh max-w-[1680px]">
-        <aside className="hidden w-[246px] shrink-0 flex-col bg-sidebar px-5 py-6 text-sidebar-foreground lg:flex">
-          <div className="flex items-center gap-3 px-2">
-            <div className="grid size-10 place-items-center bg-sidebar-primary text-sidebar-primary-foreground">
-              <RadioTower size={20} strokeWidth={2.2} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold tracking-[0.22em] text-sidebar-primary">
-                {t("relay.brand")}
-              </p>
-              <p className="mt-0.5 text-sm font-semibold tracking-wide">
-                {t("relay.product")}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-10 border border-sidebar-border bg-sidebar-accent/40 px-3.5 py-3">
-            <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-sidebar-foreground/65">
-              <Network size={13} /> {t("relay.environment")}
-            </div>
-            <p className="mt-2 truncate text-sm font-medium">
-              {currentUser?.username ?? "—"}
-            </p>
-            <div className="mt-2.5 flex items-center gap-2 text-xs text-sidebar-foreground/70">
-              <span
-                className={cn(
-                  "size-1.5",
-                  dashboard?.syncError ? "bg-destructive" : "bg-sidebar-primary"
-                )}
+    <SidebarProvider className="min-h-svh bg-sidebar text-foreground">
+      <AppSidebar
+        items={navItems}
+        activePage={page}
+        currentUser={currentUser}
+        syncError={dashboard?.syncError}
+        isLoggingOut={logoutMutation.isPending}
+        onNavigate={setPage}
+        onLogout={() => logoutMutation.mutate()}
+        variant="inset"
+      />
+      <SidebarInset className="min-h-svh min-w-0">
+        <header className="sticky top-0 z-20 border-b border-border bg-background/90 px-5 backdrop-blur-xl sm:px-8 lg:px-10">
+          <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <SidebarTrigger
+                aria-label={t("relay.sidebar.toggle")}
+                title={t("relay.sidebar.toggle")}
+                className="shrink-0"
               />
-              {dashboard?.syncError
-                ? t("relay.overview.disconnected")
-                : t("relay.overview.connected")}
+              <Separator orientation="vertical" className="h-6" />
+              <Breadcrumb
+                aria-label={t("relay.sidebar.breadcrumb")}
+                className="min-w-0"
+              >
+                <BreadcrumbList className="flex-nowrap">
+                  <BreadcrumbItem>
+                    <BreadcrumbPage className="truncate">
+                      {pageTitle}
+                    </BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
             </div>
-          </div>
-
-          <nav
-            className="mt-8 flex flex-1 flex-col gap-1"
-            aria-label={t("relay.header.system")}
-          >
-            <p className="mb-2 px-3 text-[10px] font-bold tracking-[0.2em] text-sidebar-foreground/55">
-              {t("relay.common.workspace")}
-            </p>
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const active = page === item.key
-              return (
-                <Button
-                  key={item.key}
-                  variant="ghost"
-                  className={cn(
-                    "flex h-11 items-center gap-3 px-3 text-left text-xs tracking-normal normal-case transition-colors",
-                    active
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  )}
-                  onPress={() => setPage(item.key)}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <Icon size={17} strokeWidth={1.8} />
-                  <span className="flex-1">{item.label}</span>
-                  {item.badge ? (
-                    <span className="border border-sidebar-border px-1.5 py-0.5 text-[10px]">
-                      {item.badge}
-                    </span>
-                  ) : null}
-                  {active ? <ChevronRight size={14} /> : null}
-                </Button>
-              )
-            })}
-          </nav>
-
-          <div className="border border-sidebar-border bg-sidebar-accent/40 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-sidebar-foreground">
-              <ShieldCheck size={15} className="text-sidebar-primary" />
-              {currentUser?.isAdmin
-                ? t("relay.common.admin")
-                : currentUser?.isReviewer
-                  ? t("relay.common.reviewer")
-                  : t("relay.common.member")}
-            </div>
-          </div>
-          <div className="mt-4 flex items-center justify-between px-1">
-            <LanguageToggle />
-            <ModeToggle />
-          </div>
-        </aside>
-
-        <main className="min-w-0 flex-1">
-          <header className="sticky top-0 z-20 border-b border-border bg-background/90 px-5 backdrop-blur-xl sm:px-8 lg:px-10">
-            <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="grid size-9 shrink-0 place-items-center rounded-none bg-muted text-muted-foreground lg:hidden">
-                  <RadioTower size={18} />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-[10px] font-semibold tracking-[0.17em] text-muted-foreground">
-                    {t("relay.header.system")}
-                  </p>
-                  <h1 className="mt-0.5 truncate text-sm font-semibold">
-                    {pageTitle}
-                  </h1>
-                </div>
-                <ChevronDown
-                  size={14}
-                  className="ml-1 hidden text-muted-foreground sm:block"
-                />
-              </div>
-              <div className="flex items-center gap-2 sm:gap-3">
-                <Badge
-                  variant={dashboard?.syncError ? "destructive" : "outline"}
-                  className="hidden sm:inline-flex"
-                >
-                  {dashboard?.syncError
-                    ? t("relay.header.stale")
-                    : t("relay.header.synced")}
-                </Badge>
-                {isAdmin ? (
-                  <Button
-                    variant="outline"
-                    className="flex h-9 items-center gap-2 px-3 text-xs tracking-normal normal-case"
-                    onPress={() => syncMutation.mutate()}
-                    isDisabled={syncMutation.isPending}
-                  >
-                    <RefreshCw
-                      size={14}
-                      className={cn(syncMutation.isPending && "animate-spin")}
-                    />
-                    <span className="hidden sm:inline">
-                      {syncMutation.isPending
-                        ? t("relay.header.syncing")
-                        : t("relay.header.refresh")}
-                    </span>
-                  </Button>
-                ) : null}
-                <div className="hidden items-center gap-2 lg:flex">
-                  <LanguageToggle />
-                  <ModeToggle />
-                </div>
-                <div
-                  className="grid size-9 place-items-center border border-border bg-muted text-xs font-bold"
-                  title={currentUser?.username}
-                >
-                  {currentUser?.username?.slice(0, 1).toUpperCase() ?? "?"}
-                </div>
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <LanguageToggle />
+              <ModeToggle />
+              <Badge
+                variant={dashboard?.syncError ? "destructive" : "outline"}
+                className="hidden sm:inline-flex"
+              >
+                {dashboard?.syncError
+                  ? t("relay.header.stale")
+                  : t("relay.header.synced")}
+              </Badge>
+              {isAdmin ? (
                 <Button
                   variant="outline"
-                  size="icon-sm"
-                  aria-label={t("auth.logout")}
-                  isDisabled={logoutMutation.isPending}
-                  onPress={() => logoutMutation.mutate()}
+                  className="flex h-9 items-center gap-2 px-3 text-xs tracking-normal normal-case"
+                  onPress={() => syncMutation.mutate()}
+                  isDisabled={syncMutation.isPending}
                 >
-                  <LogOut size={15} />
-                </Button>
-              </div>
-            </div>
-            <div className="-mx-5 flex gap-1 overflow-x-auto px-5 pb-2 sm:-mx-8 sm:px-8 lg:hidden">
-              {navItems.map((item) => (
-                <Button
-                  key={item.key}
-                  variant="ghost"
-                  className={cn(
-                    "h-8 shrink-0 px-3 text-xs tracking-normal normal-case",
-                    page === item.key
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground"
-                  )}
-                  onPress={() => setPage(item.key)}
-                >
-                  {item.label}
-                  {item.badge ? (
-                    <span className="ml-1.5">{item.badge}</span>
-                  ) : null}
-                </Button>
-              ))}
-            </div>
-          </header>
-
-          <div className="mx-auto max-w-[1320px] px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
-            <div className="mb-7 flex flex-col justify-between gap-4 sm:mb-8 sm:flex-row sm:items-end">
-              <div>
-                <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground">
-                  {pageEyebrow}
-                </p>
-                <h2 className="mt-2 font-heading text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">
-                  {pageHeading}
-                </h2>
-                <p className="mt-2 max-w-[760px] text-sm leading-6 text-muted-foreground">
-                  {pageDescription}
-                </p>
-              </div>
-              {page === "relays" && canManageRelays ? (
-                <Button
-                  className="flex items-center justify-center gap-2 px-4"
-                  onPress={() => setRelayFormOpen(true)}
-                >
-                  <Plus size={15} /> {t("relay.relays.add")}
-                </Button>
-              ) : page === "relays" && canApply ? (
-                <Button
-                  className="flex items-center justify-center gap-2 px-4"
-                  onPress={() => setApplicationOpen(true)}
-                >
-                  <Plus size={15} /> {t("relay.relays.apply")}
+                  <RefreshCw
+                    size={14}
+                    className={cn(syncMutation.isPending && "animate-spin")}
+                  />
+                  <span className="hidden sm:inline">
+                    {syncMutation.isPending
+                      ? t("relay.header.syncing")
+                      : t("relay.header.refresh")}
+                  </span>
                 </Button>
               ) : null}
             </div>
+          </div>
+        </header>
 
-            {apiError ? (
-              <div className="mb-6 flex items-start gap-3 rounded-none border border-border bg-muted px-4 py-3.5 text-muted-foreground">
-                <TriangleAlert size={18} className="mt-0.5 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold">
-                    {configError
-                      ? t("relay.overview.configTitle")
-                      : errorMessage(apiError, t("errors.unknown"))}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 opacity-75">
-                    {configError
-                      ? t("relay.overview.configBody")
-                      : t("relay.overview.disconnected")}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onPress={() => dashboardQuery.refetch()}
-                  aria-label={t("relay.common.retry")}
-                >
-                  <RefreshCw size={15} />
-                </Button>
-              </div>
-            ) : null}
-
-            {page === "overview" ? (
-              <OverviewPage
-                dashboard={dashboard}
-                devices={devices}
-                relays={relays}
-                applications={pendingApplications}
-                isAdmin={isAdmin}
-                isLoading={dashboardQuery.isLoading}
-                locale={locale}
-                t={t}
-                onOpenEditor={openEditor}
-                onOpenApplications={() => setPage("requests")}
-                onSync={() => syncMutation.mutate()}
-                syncPending={syncMutation.isPending}
-              />
-            ) : null}
-
-            {page === "editor" ? (
-              <EditorPage
-                devices={filteredDevices}
-                graph={graph}
-                selectedDeviceId={activeDeviceId}
-                draftRelayIds={draftRelayIds}
-                search={search}
-                dirty={dirty}
-                isLoading={graphQuery.isLoading || devicesQuery.isLoading}
-                savePending={saveMutation.isPending}
-                saveError={saveMutation.error}
-                canApply={canApply}
-                t={t}
-                onSearch={setSearch}
-                onSelectDevice={setSelectedDeviceId}
-                onToggleRelay={toggleRelay}
-                onSave={saveDraft}
-                onDiscard={() => graph && updateDraftRelayIds(baselineRelayIds)}
-                onApply={() => setApplicationOpen(true)}
-              />
-            ) : null}
-
-            {page === "relays" ? (
-              <RelaysPage
-                relays={relays}
-                canManageRelays={canManageRelays}
-                isLoading={relaysQuery.isLoading}
-                t={t}
-                onToggle={(relay) =>
-                  relayUpdateMutation.mutate({
-                    nodeId: relay.nodeId,
-                    input: relayUpdateInput(relay, !relay.selectable),
-                  })
-                }
-                onCancel={setRelayCancelTarget}
-              />
-            ) : null}
-
-            {page === "requests" ? (
-              <ApplicationsPage
-                applications={userApplications}
-                devices={devices.filter(
-                  (device) =>
-                    device.username.toLocaleLowerCase() ===
-                      currentUser?.username?.toLocaleLowerCase() &&
-                    device.tags.length === 0 &&
-                    !device.missing
-                )}
-                isReviewer={isReviewer}
-                canApply={canApply}
-                isLoading={applicationsQuery.isLoading}
-                t={t}
-                onCreate={() => setApplicationOpen(true)}
-                onCancel={(application) =>
-                  cancelApplicationMutation.mutate(application.id)
-                }
-                onReview={(application, decision) => {
-                  setReviewNote("")
-                  setReviewTarget({ application, decision })
-                }}
-              />
-            ) : null}
-
-            {page === "policy" && isAdmin ? (
-              <PolicyPage
-                revisions={revisionsQuery.data ?? []}
-                revisionDetail={revisionDetailQuery.data}
-                revisionDetailLoading={revisionDetailQuery.isLoading}
-                revisionDetailError={revisionDetailQuery.error}
-                devices={devices}
-                relays={relays}
-                audits={auditsQuery.data ?? []}
-                isLoading={revisionsQuery.isLoading || auditsQuery.isLoading}
-                t={t}
-                locale={locale}
-                onRollback={setRollbackTarget}
-                onViewRevision={(revision) => setRevisionDetailId(revision.id)}
-              />
-            ) : null}
-
-            {page === "settings" && isAdmin ? (
-              <SettingsPage
-                key={`${settingsQuery.data?.updatedBy ?? "loading"}:${settingsQuery.data?.updatedAt ?? ""}`}
-                settings={settingsQuery.data}
-                isLoading={settingsQuery.isLoading}
-                error={settingsQuery.error}
-                isPending={settingsMutation.isPending}
-                saveError={settingsMutation.error}
-                locale={locale}
-                t={t}
-                onSave={(input) => settingsMutation.mutate(input)}
-              />
+        <div className="mx-auto w-full max-w-[1320px] px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
+          <div className="mb-7 flex flex-col justify-between gap-4 sm:mb-8 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground">
+                {pageEyebrow}
+              </p>
+              <h2 className="mt-2 font-heading text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">
+                {pageHeading}
+              </h2>
+              <p className="mt-2 max-w-[760px] text-sm leading-6 text-muted-foreground">
+                {pageDescription}
+              </p>
+            </div>
+            {page === "relays" && canManageRelays ? (
+              <Button
+                className="flex items-center justify-center gap-2 px-4"
+                onPress={() => setRelayFormOpen(true)}
+              >
+                <Plus size={15} /> {t("relay.relays.add")}
+              </Button>
+            ) : page === "relays" && canApply ? (
+              <Button
+                className="flex items-center justify-center gap-2 px-4"
+                onPress={() => setApplicationOpen(true)}
+              >
+                <Plus size={15} /> {t("relay.relays.apply")}
+              </Button>
             ) : null}
           </div>
-        </main>
-      </div>
+
+          {apiError ? (
+            <div className="mb-6 flex items-start gap-3 rounded-none border border-border bg-muted px-4 py-3.5 text-muted-foreground">
+              <TriangleAlert size={18} className="mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">
+                  {configError
+                    ? t("relay.overview.configTitle")
+                    : errorMessage(apiError, t("errors.unknown"))}
+                </p>
+                <p className="mt-1 text-xs leading-5 opacity-75">
+                  {configError
+                    ? t("relay.overview.configBody")
+                    : t("relay.overview.disconnected")}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onPress={() => dashboardQuery.refetch()}
+                aria-label={t("relay.common.retry")}
+              >
+                <RefreshCw size={15} />
+              </Button>
+            </div>
+          ) : null}
+
+          {page === "overview" ? (
+            <OverviewPage
+              dashboard={dashboard}
+              devices={devices}
+              relays={relays}
+              applications={pendingApplications}
+              isAdmin={isAdmin}
+              isLoading={dashboardQuery.isLoading}
+              locale={locale}
+              t={t}
+              onOpenEditor={openEditor}
+              onOpenApplications={() => setPage("requests")}
+              onSync={() => syncMutation.mutate()}
+              syncPending={syncMutation.isPending}
+            />
+          ) : null}
+
+          {page === "editor" ? (
+            <EditorPage
+              devices={filteredDevices}
+              graph={graph}
+              selectedDeviceId={activeDeviceId}
+              draftRelayIds={draftRelayIds}
+              search={search}
+              dirty={dirty}
+              isLoading={graphQuery.isLoading || devicesQuery.isLoading}
+              savePending={saveMutation.isPending}
+              saveError={saveMutation.error}
+              canApply={canApply}
+              t={t}
+              onSearch={setSearch}
+              onSelectDevice={setSelectedDeviceId}
+              onToggleRelay={toggleRelay}
+              onSave={saveDraft}
+              onDiscard={() => graph && updateDraftRelayIds(baselineRelayIds)}
+              onApply={() => setApplicationOpen(true)}
+            />
+          ) : null}
+
+          {page === "relays" ? (
+            <RelaysPage
+              relays={relays}
+              canManageRelays={canManageRelays}
+              isLoading={relaysQuery.isLoading}
+              t={t}
+              onToggle={(relay) =>
+                relayUpdateMutation.mutate({
+                  nodeId: relay.nodeId,
+                  input: relayUpdateInput(relay, !relay.selectable),
+                })
+              }
+              onEdit={setRelayEditTarget}
+              onCancel={setRelayCancelTarget}
+            />
+          ) : null}
+
+          {page === "requests" ? (
+            <ApplicationsPage
+              applications={userApplications}
+              devices={devices.filter(
+                (device) =>
+                  device.username.toLocaleLowerCase() ===
+                    currentUser?.username?.toLocaleLowerCase() &&
+                  device.tags.length === 0 &&
+                  !device.missing
+              )}
+              isReviewer={isReviewer}
+              canApply={canApply}
+              isLoading={applicationsQuery.isLoading}
+              t={t}
+              onCreate={() => setApplicationOpen(true)}
+              onCancel={(application) =>
+                cancelApplicationMutation.mutate(application.id)
+              }
+              onReview={(application, decision) => {
+                setReviewNote("")
+                setReviewTarget({ application, decision })
+              }}
+            />
+          ) : null}
+
+          {page === "policy" && isAdmin ? (
+            <PolicyPage
+              revisions={revisionsQuery.data ?? []}
+              revisionDetail={revisionDetailQuery.data}
+              revisionDetailLoading={revisionDetailQuery.isLoading}
+              revisionDetailError={revisionDetailQuery.error}
+              devices={devices}
+              relays={relays}
+              audits={auditsQuery.data ?? []}
+              isLoading={revisionsQuery.isLoading || auditsQuery.isLoading}
+              t={t}
+              locale={locale}
+              onRollback={setRollbackTarget}
+              onViewRevision={(revision) => setRevisionDetailId(revision.id)}
+            />
+          ) : null}
+
+          {page === "settings" && isAdmin ? (
+            <SettingsPage
+              key={`${settingsQuery.data?.updatedBy ?? "loading"}:${settingsQuery.data?.updatedAt ?? ""}`}
+              settings={settingsQuery.data}
+              isLoading={settingsQuery.isLoading}
+              error={settingsQuery.error}
+              isPending={settingsMutation.isPending}
+              saveError={settingsMutation.error}
+              locale={locale}
+              t={t}
+              onSave={(input) => settingsMutation.mutate(input)}
+            />
+          ) : null}
+        </div>
+      </SidebarInset>
 
       {toast ? (
         <div
@@ -851,18 +753,44 @@ export function PeerRelayConsole() {
         />
       ) : null}
 
-      {relayFormOpen && canManageRelays ? (
+      {(relayFormOpen || relayEditTarget) && canManageRelays ? (
         <RelayRegistrationDialog
-          devices={devices.filter(
-            (device) =>
-              !device.missing &&
-              !relays.some((relay) => relay.nodeId === device.nodeId)
-          )}
+          key={relayEditTarget?.nodeId ?? "new-relay"}
+          devices={
+            relayEditTarget
+              ? []
+              : devices.filter(
+                  (device) =>
+                    !device.missing &&
+                    !relays.some((relay) => relay.nodeId === device.nodeId)
+                )
+          }
+          relay={relayEditTarget ?? undefined}
           t={t}
-          isPending={relayRegistrationMutation.isPending}
-          error={relayRegistrationMutation.error}
-          onClose={() => setRelayFormOpen(false)}
-          onSubmit={(input) => relayRegistrationMutation.mutate(input)}
+          isPending={
+            relayEditTarget
+              ? relayUpdateMutation.isPending
+              : relayRegistrationMutation.isPending
+          }
+          error={
+            relayEditTarget
+              ? relayUpdateMutation.error
+              : relayRegistrationMutation.error
+          }
+          onClose={() => {
+            setRelayFormOpen(false)
+            setRelayEditTarget(null)
+          }}
+          onSubmit={(input) => {
+            if ("nodeId" in input) {
+              relayRegistrationMutation.mutate(input)
+            } else if (relayEditTarget) {
+              relayUpdateMutation.mutate({
+                nodeId: relayEditTarget.nodeId,
+                input,
+              })
+            }
+          }}
         />
       ) : null}
 
@@ -907,6 +835,6 @@ export function PeerRelayConsole() {
           onConfirm={() => relayCancelMutation.mutate(relayCancelTarget.nodeId)}
         />
       ) : null}
-    </div>
+    </SidebarProvider>
   )
 }

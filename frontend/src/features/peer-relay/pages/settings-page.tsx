@@ -206,15 +206,17 @@ export function SettingsPage({
             />
           </Field>
           <div className="mt-4 border border-border p-3.5">
-            <Checkbox
-              isSelected={selfServiceEnabled}
-              onChange={setSelfServiceEnabled}
-            >
+            <div className="flex min-w-0 items-start gap-2">
+              <Checkbox
+                aria-label={t("relay.settings.selfServiceTitle")}
+                isSelected={selfServiceEnabled}
+                onChange={setSelfServiceEnabled}
+              />
               {groupLabel(
                 t("relay.settings.selfServiceTitle"),
                 t("relay.settings.selfServiceHelp")
               )}
-            </Checkbox>
+            </div>
           </div>
         </Card>
 
@@ -229,26 +231,30 @@ export function SettingsPage({
           </div>
           <div className="space-y-3">
             <div className="border border-border p-3.5">
-              <Checkbox
-                isSelected={reviewerManageRelays}
-                onChange={setReviewerManageRelays}
-              >
+              <div className="flex min-w-0 items-start gap-2">
+                <Checkbox
+                  aria-label={t("relay.settings.reviewerManageRelays")}
+                  isSelected={reviewerManageRelays}
+                  onChange={setReviewerManageRelays}
+                />
                 {groupLabel(
                   t("relay.settings.reviewerManageRelays"),
                   t("relay.settings.reviewerManageRelaysHelp")
                 )}
-              </Checkbox>
+              </div>
             </div>
             <div className="border border-border p-3.5">
-              <Checkbox
-                isSelected={reviewerEditAllDevices}
-                onChange={setReviewerEditAllDevices}
-              >
+              <div className="flex min-w-0 items-start gap-2">
+                <Checkbox
+                  aria-label={t("relay.settings.reviewerEditAllDevices")}
+                  isSelected={reviewerEditAllDevices}
+                  onChange={setReviewerEditAllDevices}
+                />
                 {groupLabel(
                   t("relay.settings.reviewerEditAllDevices"),
                   t("relay.settings.reviewerEditAllDevicesHelp")
                 )}
-              </Checkbox>
+              </div>
             </div>
           </div>
         </Card>

@@ -39,6 +39,17 @@ export default {
     brand: "PEER RELAY",
     product: "Manager",
     environment: "HEADSCALE NETWORK",
+    sidebar: {
+      administration: "Administration",
+      breadcrumb: "Current page",
+      close: "Close navigation",
+      loadingUser: "Loading account",
+      mobileDescription:
+        "Use the navigation menu to move between console pages.",
+      mobileTitle: "Console navigation",
+      signingOut: "Signing out",
+      toggle: "Toggle sidebar",
+    },
     nav: {
       overview: "Overview",
       editor: "Authorization",
@@ -124,6 +135,9 @@ export default {
       description:
         "View registered Peer Relay nodes and their selection status.",
       add: "Register device",
+      edit: "Edit",
+      editTitle: "Edit Peer Relay",
+      saveChanges: "Save changes",
       apply: "Apply to register",
       displayName: "Display name",
       region: "Region",

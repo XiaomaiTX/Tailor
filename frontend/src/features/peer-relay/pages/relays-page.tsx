@@ -5,6 +5,7 @@ import {
   Globe2,
   MapPin,
   Network,
+  Pencil,
   RadioTower,
   Search,
 } from "lucide-react"
@@ -27,6 +28,7 @@ export function RelaysPage({
   isLoading,
   t,
   onToggle,
+  onEdit,
   onCancel,
 }: {
   relays: Relay[]
@@ -34,6 +36,7 @@ export function RelaysPage({
   isLoading: boolean
   t: (key: string) => string
   onToggle: (relay: Relay) => void
+  onEdit: (relay: Relay) => void
   onCancel: (relay: Relay) => void
 }) {
   const [search, setSearch] = useState("")
@@ -183,7 +186,15 @@ export function RelaysPage({
                 </p>
               ) : null}
               {canManageRelays ? (
-                <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                  <Button
+                    variant="ghost"
+                    onPress={() => onEdit(relay)}
+                    className="h-auto p-0 text-xs tracking-normal text-muted-foreground normal-case"
+                  >
+                    <Pencil size={13} />
+                    {t("relay.relays.edit")}
+                  </Button>
                   <Button
                     variant="ghost"
                     onPress={() => onToggle(relay)}
